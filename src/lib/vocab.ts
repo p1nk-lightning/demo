@@ -37,7 +37,7 @@ export interface ParseResult {
 /** TXT 解析: 支持换行/空格/逗号/制表符 */
 export function parseTXT(input: string): ParseResult {
   const tokens = input
-    .split(/[\n\r,\t]+|\s{2,}|;/g)
+    .split(/[\s,;]+/g)
     .map((s) => s.trim())
     .filter(Boolean);
 

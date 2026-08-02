@@ -1,23 +1,39 @@
-// 与 Prd.md §5 数据契约一一对应
-
 export type Difficulty = 'CET4' | 'CET6' | '考研' | '雅思' | '托福';
 
+export type WordSource = 'pasted' | 'xlsx' | 'reading';
+export type ArticleTopic = '随机' | '科技' | '文化' | '教育' | '生活' | '商业' | '自然';
+
 export interface Word {
+  id?: string;
   text: string;
   normalized: string;
-  source: 'pasted' | 'xlsx';
+  source: WordSource;
+  mastered?: boolean;
   addedAt: number;
+  updatedAt?: number;
 }
 
 export interface VocabularyList {
   id: string;
+  name: string;
   difficulty: Difficulty;
-  words: Word[];
+  wordCount: number;
+  masteredCount: number;
   createdAt: number;
+  updatedAt: number;
+  lastUsedAt?: number;
+  schemaVersion: 2;
+}
+
+export interface VocabularyItem extends Word {
+  id: string;
+  listId: string;
+  mastered: boolean;
+  updatedAt: number;
 }
 
 export interface Question {
-  question: string; // 中文题干
+  question: string;
   options: [string, string, string, string];
   answer: 0 | 1 | 2 | 3;
 }
@@ -28,8 +44,15 @@ export interface Article {
   article: string;
   questions: Question[];
   difficulty: Difficulty;
-  vocabHitIds: string[]; // 实际出现在文中、归一化后的词（与词表的 normalized 字段匹配）
+  vocabHitIds: string[];
   createdAt: number;
+  summary?: string;
+  topic?: ArticleTopic;
+  wordCount?: number;
+  estimatedMinutes?: number;
+  source?: 'generated' | 'daily';
+  coverUrl?: string;
+  publishDate?: string;
 }
 
 export interface UserProgress {
@@ -39,12 +62,27 @@ export interface UserProgress {
   completedAt: number;
 }
 
-// 工具：Worker 入参/出参
+export type ApiProvider = 'deepseek' | 'moonshot' | 'openai-compatible';
+
+export interface ApiProfile {
+  id: string;
+  provider: ApiProvider;
+  name: string;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+  isActive: 0 | 1;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface GenerateRequest {
   difficulty: Difficulty;
-  // 从词表里随机抽样至多 50 个词给 LLM 提示,降低 token 与"必含"开销
   sampleWords: string[];
-  retryHint?: string; // 内部使用：重试时追加的提示
+  wordCount?: number;
+  topic?: ArticleTopic;
+  questionCount?: 3 | 5;
+  retryHint?: string;
 }
 
 export interface DictEntry {

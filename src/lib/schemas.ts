@@ -10,7 +10,7 @@ export const QuestionSchema = z.object({
 export const ArticlePayloadSchema = z.object({
   title: z.string().min(1),
   article: z.string().min(50, '文章过短（<50 字符）'),
-  questions: z.array(QuestionSchema).length(5, '必须恰好 5 道题'),
+  questions: z.array(QuestionSchema).min(3).max(5),
 });
 
 export type ArticlePayload = z.infer<typeof ArticlePayloadSchema>;
@@ -26,4 +26,7 @@ export const DifficultySchema = z.union([
 export const GenerateRequestSchema = z.object({
   difficulty: DifficultySchema,
   sampleWords: z.array(z.string()).min(1).max(50),
+  wordCount: z.number().int().min(100).max(1500).optional(),
+  topic: z.enum(['随机', '科技', '文化', '教育', '生活', '商业', '自然']).optional(),
+  questionCount: z.union([z.literal(3), z.literal(5)]).optional(),
 });

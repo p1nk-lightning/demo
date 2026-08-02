@@ -1,17 +1,28 @@
 // 给前端的 LLM 调用封装
-import type { Article, Difficulty } from '@/types/domain';
+import type { Article, GenerateRequest } from '@/types/domain';
+import { getActiveApiProfile } from './db';
+import { saveArticle } from './storage';
 import { uid } from './utils';
 
 const BASE = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
 
 export async function generateArticle(
-  req: { difficulty: Difficulty; sampleWords: string[]; retryHint?: string },
+  req: GenerateRequest,
   signal?: AbortSignal,
 ): Promise<Article> {
+  const profile = await getActiveApiProfile();
   const res = await fetch(`${BASE}/api/generate`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(req),
+    headers: {
+      'content-type': 'application/json',
+      ...(profile?.apiKey ? { 'x-provider-key': profile.apiKey } : {}),
+    },
+    body: JSON.stringify({
+      ...req,
+      provider: profile
+        ? { baseUrl: profile.baseUrl, model: profile.model }
+        : undefined,
+    }),
     signal,
   });
   if (!res.ok) {
@@ -28,9 +39,12 @@ export async function generateArticle(
     difficulty: data.difficulty,
     vocabHitIds: data.vocabHitIds,
     createdAt: Date.now(),
+    topic: req.topic,
+    wordCount: req.wordCount,
+    estimatedMinutes: Math.max(1, Math.ceil((req.wordCount ?? 300) / 180)),
+    source: 'generated',
   };
   // 立即落本地存储
-  const { saveArticle } = await import('./storage');
   await saveArticle(article);
   return article;
 }

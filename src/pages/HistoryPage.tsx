@@ -1,123 +1,72 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { listAllArticles, getProgress } from '@/lib/storage';
+import { useNavigate } from 'react-router-dom';
+import { ArrowRight, BookOpen, Clock3 } from 'lucide-react';
+import { getProgress, listAllArticles } from '@/lib/storage';
 import { formatDateTime } from '@/lib/utils';
-import { Badge, Button, Card, EmptyState } from '@/components/ui';
 import type { Article, UserProgress } from '@/types/domain';
 
-interface Row {
+interface HistoryItem {
   article: Article;
   progress: UserProgress | null;
 }
 
 export function HistoryPage() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const navigate = useNavigate();
+  const [items, setItems] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    (async () => {
-      const arts = await listAllArticles();
-      const withProgress: Row[] = await Promise.all(
-        arts.map(async (a) => ({
-          article: a,
-          progress: (await getProgress(a.id)) ?? null,
-        })),
-      );
-      setRows(withProgress);
-      setLoaded(true);
-    })();
+    listAllArticles().then(async (articles) => {
+      setItems(await Promise.all(articles.map(async (article) => ({ article, progress: (await getProgress(article.id)) ?? null }))));
+      setLoading(false);
+    });
   }, []);
 
-  function scoreVariant(score: number) {
-    if (score === 5) return 'success' as const;
-    if (score >= 3) return 'brand' as const;
-    return 'danger' as const;
-  }
-
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-ink-900">📊 历史记录</h1>
-        <Link to="/" className="text-sm text-brand-600 hover:underline">
-          ← 返回首页
-        </Link>
+    <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8 lg:py-10">
+      <div className="mb-8">
+        <p className="mb-2 text-sm font-semibold text-brand-700">Reading history</p>
+        <h1 className="font-display text-4xl font-medium text-ink-950">阅读记录</h1>
+        <p className="mt-3 text-ink-500">回到读过的文章，查看完成情况和答题结果。</p>
       </div>
 
-      {!loaded ? (
-        <Card variant="outlined" className="text-center text-ink-500">
-          加载中…
-        </Card>
-      ) : rows.length === 0 ? (
-        <Card variant="outlined">
-          <EmptyState
-            icon="📝"
-            title="暂无历史记录"
-            description="去首页生成你的第一篇阅读吧。"
-            action={
-              <Link to="/">
-                <Button>去生成</Button>
-              </Link>
-            }
-          />
-        </Card>
+      {loading ? (
+        <p className="text-sm text-ink-400">正在读取本地记录…</p>
+      ) : items.length === 0 ? (
+        <section className="rounded-lg border border-brand-100 bg-brand-50 px-6 py-16 text-center">
+          <BookOpen className="mx-auto text-brand-500" size={34} />
+          <h2 className="mt-5 text-xl font-bold">还没有阅读记录</h2>
+          <p className="mt-2 text-sm text-ink-500">从今日推荐开始，完成你的第一篇阅读。</p>
+          <button onClick={() => navigate('/')} className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-brand-600 px-5 text-sm font-semibold text-white hover:bg-brand-700">去阅读 <ArrowRight size={17} /></button>
+        </section>
       ) : (
-        <Card variant="outlined" className="overflow-hidden p-0">
-          <table className="w-full text-sm">
-            <thead className="bg-ink-50 text-ink-600">
-              <tr>
-                <th className="px-4 py-2 text-left">#</th>
-                <th className="px-4 py-2 text-left">标题</th>
-                <th className="px-4 py-2 text-left">难度</th>
-                <th className="px-4 py-2 text-left">得分</th>
-                <th className="px-4 py-2 text-left">完成时间</th>
-                <th className="px-4 py-2"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => (
-                <tr
-                  key={r.article.id}
-                  className="border-t border-ink-200 hover:bg-ink-50"
-                >
-                  <td className="px-4 py-3 text-ink-400 num">
-                    {rows.length - i}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-ink-900">
-                    {r.article.title}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="brand" size="sm">
-                      {r.article.difficulty}
-                    </Badge>
-                  </td>
-                  <td className="px-4 py-3">
-                    {r.progress ? (
-                      <Badge variant={scoreVariant(r.progress.score)}>
-                        <span className="num">
-                          {r.progress.score} / 5
-                        </span>
-                      </Badge>
-                    ) : (
-                      <span className="text-ink-400">未完成</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-ink-500">
-                    {r.progress
-                      ? formatDateTime(r.progress.completedAt)
-                      : formatDateTime(r.article.createdAt)}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link to={`/reading/${r.article.id}`}>
-                      <Button variant="ghost" size="sm" trailing="›">
-                        查看
-                      </Button>
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map(({ article, progress }) => (
+            <article key={article.id} className="group overflow-hidden rounded-lg border border-ink-200 bg-white shadow-card transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-card-hover">
+              <div className="relative h-40 overflow-hidden bg-brand-50">
+                {article.coverUrl ? (
+                  <img src={article.coverUrl} alt="" className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" />
+                ) : (
+                  <div className="grid h-full place-items-center"><BookOpen size={34} className="text-brand-400" /></div>
+                )}
+                <span className="absolute left-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-bold text-brand-700 backdrop-blur">{article.difficulty}</span>
+              </div>
+              <div className="p-5">
+                <div className="mb-3 flex items-center gap-3 text-xs text-ink-400">
+                  <span className="inline-flex items-center gap-1"><Clock3 size={13} />{article.estimatedMinutes ?? 3} 分钟</span>
+                  <span>{article.source === 'daily' ? '每日推荐' : '专属生成'}</span>
+                </div>
+                <h2 className="line-clamp-2 min-h-12 text-lg font-bold leading-6 text-ink-900">{article.title}</h2>
+                <div className="mt-5 flex items-center justify-between border-t border-ink-100 pt-4">
+                  <span className={`text-xs font-semibold ${progress ? 'text-emerald-600' : 'text-ink-400'}`}>
+                    {progress ? `得分 ${progress.score}/${article.questions.length}` : formatDateTime(article.createdAt)}
+                  </span>
+                  <button onClick={() => navigate(`/reading/${article.id}`)} title="查看文章" className="icon-button border-transparent bg-transparent"><ArrowRight size={17} /></button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
       )}
     </div>
   );

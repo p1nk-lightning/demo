@@ -1,82 +1,67 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { Question } from '@/types/domain';
 
 interface Props {
   question: Question;
-  index: number;          // 0..4
+  index: number;
   total: number;
   selected: number | null;
-  onSelect: (v: number) => void;
+  onSelect: (value: number) => void;
   onPrev: () => void;
   onNext: () => void;
   revealed?: { answer: number; correct: boolean };
 }
 
-export function QuestionCard(props: Props) {
-  const { question, index, total, selected, onSelect, onPrev, onNext, revealed } = props;
+export function QuestionCard({
+  question,
+  index,
+  total,
+  selected,
+  onSelect,
+  onPrev,
+  onNext,
+  revealed,
+}: Props) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="mb-2 text-sm text-slate-500">
-        📝 题目 {index + 1} / {total}
+    <section className="rounded-lg border border-ink-200 bg-white p-5 shadow-card">
+      <div className="mb-4 flex items-center justify-between text-xs font-semibold text-ink-400">
+        <span>阅读理解</span>
+        <span className="num">{index + 1} / {total}</span>
       </div>
-      <div className="mb-3 text-base text-slate-900">{question.question}</div>
+      <h2 className="mb-5 text-base font-semibold leading-7 text-ink-900">{question.question}</h2>
       <div className="space-y-2">
-        {question.options.map((opt, i) => {
-          const isSelected = selected === i;
-          const isCorrect = revealed?.answer === i;
-          const isUserWrong = revealed && isSelected && !revealed.correct;
+        {question.options.map((option, optionIndex) => {
+          const isSelected = selected === optionIndex;
+          const isCorrect = revealed?.answer === optionIndex;
+          const isUserWrong = Boolean(revealed && isSelected && !revealed.correct);
+          const stateClass = revealed
+            ? isCorrect
+              ? 'border-emerald-300 bg-emerald-50'
+              : isUserWrong
+                ? 'border-red-300 bg-red-50'
+                : 'border-ink-200'
+            : isSelected
+              ? 'border-brand-400 bg-brand-50'
+              : 'border-ink-200 hover:border-brand-200 hover:bg-ink-50';
+
           return (
-            <label
-              key={i}
-              className={
-                'flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm transition ' +
-                (revealed
-                  ? isCorrect
-                    ? 'border-emerald-500 bg-emerald-50'
-                    : isUserWrong
-                    ? 'border-red-400 bg-red-50'
-                    : 'border-slate-200'
-                  : isSelected
-                  ? 'border-brand-600 bg-brand-50'
-                  : 'border-slate-200 hover:border-slate-300')
-              }
-            >
-              <input
-                type="radio"
-                name={`q-${index}`}
-                className="mt-0.5"
-                checked={isSelected}
-                onChange={() => onSelect(i)}
-                disabled={!!revealed}
-              />
-              <span>
-                <span className="mr-1 font-medium text-slate-500">
-                  {String.fromCharCode(65 + i)}.
-                </span>
-                {opt}
+            <label key={optionIndex} className={`flex min-h-12 cursor-pointer items-start gap-3 rounded-lg border px-3 py-3 text-sm transition-colors ${stateClass}`}>
+              <input type="radio" name={`q-${index}`} className="sr-only" checked={isSelected} onChange={() => onSelect(optionIndex)} disabled={Boolean(revealed)} />
+              <span className={`grid h-6 w-6 shrink-0 place-items-center rounded-full text-xs font-bold ${isSelected ? 'bg-brand-600 text-white' : 'bg-ink-100 text-ink-500'}`}>
+                {String.fromCharCode(65 + optionIndex)}
               </span>
+              <span className="pt-0.5 leading-5 text-ink-700">{option}</span>
             </label>
           );
         })}
       </div>
-      <div className="mt-4 flex items-center justify-between">
-        <button
-          onClick={onPrev}
-          disabled={index === 0}
-          className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:text-slate-300"
-        >
-          ← 上一题
-        </button>
-        <div className="text-xs text-slate-500">
-          ✓ 进度 {Array.from({ length: total }, (_, i) => (selected != null ? '●' : '○')).join(' ')}
+      <div className="mt-5 flex items-center justify-between border-t border-ink-100 pt-4">
+        <button onClick={onPrev} disabled={index === 0} title="上一题" className="icon-button border-transparent bg-transparent disabled:opacity-30"><ChevronLeft size={18} /></button>
+        <div className="flex gap-1.5" aria-label={`第 ${index + 1} 题，共 ${total} 题`}>
+          {Array.from({ length: total }, (_, dot) => <span key={dot} className={`h-1.5 rounded-full transition-all ${dot === index ? 'w-5 bg-brand-600' : 'w-1.5 bg-ink-200'}`} />)}
         </div>
-        <button
-          onClick={onNext}
-          disabled={index === total - 1}
-          className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 disabled:text-slate-300"
-        >
-          下一题 →
-        </button>
+        <button onClick={onNext} disabled={index === total - 1} title="下一题" className="icon-button border-transparent bg-transparent disabled:opacity-30"><ChevronRight size={18} /></button>
       </div>
-    </div>
+    </section>
   );
 }

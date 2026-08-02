@@ -5,6 +5,7 @@ import { QuestionCard } from '@/components/QuestionCard';
 import { useAppStore, buildProgress, computeScore } from '@/store/useAppStore';
 import { getArticle, getProgress, saveProgress } from '@/lib/storage';
 import { Badge, Button, Card } from '@/components/ui';
+import { ArrowLeft, Minus, Plus } from 'lucide-react';
 import type { Article, UserProgress } from '@/types/domain';
 
 const FONT_KEY = 'settings:fontSize';
@@ -54,7 +55,9 @@ export function ReadingPage() {
     return computeScore(answers, article.questions);
   }, [answers, article]);
 
-  const allAnswered = answers.every((a) => a != null);
+  const allAnswered = article
+    ? article.questions.every((_, index) => answers[index] != null)
+    : false;
 
   function changeFontSize(delta: number) {
     const next = Math.max(FONT_MIN, Math.min(FONT_MAX, fontSize + delta));
@@ -80,12 +83,13 @@ export function ReadingPage() {
     }
     setSubmitting(true);
     try {
-      const s = computeScore(answers, article.questions);
-      const p = buildProgress(article.id, answers, s);
+      const submittedAnswers = answers.slice(0, article.questions.length);
+      const s = computeScore(submittedAnswers, article.questions);
+      const p = buildProgress(article.id, submittedAnswers, s);
       await saveProgress(p);
       setSubmitted(p);
       if (s === article.questions.length) {
-        toast('🎉 满分 5/5', 'success');
+        toast(`满分 ${article.questions.length}/${article.questions.length}`, 'success');
       }
     } finally {
       setSubmitting(false);
@@ -93,38 +97,39 @@ export function ReadingPage() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-6">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="mx-auto max-w-7xl px-5 py-6 lg:px-8 lg:py-8">
+      <div className="mb-6 grid grid-cols-[auto_1fr_auto] items-center gap-4">
         <button
           onClick={() => navigate('/')}
-          className="text-sm text-ink-500 hover:text-ink-900"
+          title="返回首页"
+          className="icon-button"
         >
-          ← 返回首页
+          <ArrowLeft size={18} />
         </button>
-        <div className="flex items-center gap-2 text-sm text-ink-700">
+        <div className="min-w-0 text-center text-sm text-ink-700">
           <Badge variant="brand">{article.difficulty}</Badge>
-          <span className="text-ink-900">{article.title}</span>
+          <span className="ml-2 truncate text-ink-900">{article.title}</span>
         </div>
         <div className="flex items-center gap-2 text-sm">
           <button
             onClick={() => changeFontSize(-1)}
-            className="rounded-lg border border-ink-200 bg-paper px-2 py-0.5 text-xs text-ink-700 hover:bg-ink-50"
+            className="icon-button h-8 w-8"
             aria-label="缩小字号"
           >
-            A-
+            <Minus size={15} />
           </button>
           <span className="num text-xs text-ink-500">{fontSize}px</span>
           <button
             onClick={() => changeFontSize(1)}
-            className="rounded-lg border border-ink-200 bg-paper px-2 py-0.5 text-xs text-ink-700 hover:bg-ink-50"
+            className="icon-button h-8 w-8"
             aria-label="放大字号"
           >
-            A+
+            <Plus size={15} />
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,.65fr)]">
         <Card className="p-6">
           <ArticleView article={article} words={words} />
         </Card>
@@ -165,9 +170,7 @@ export function ReadingPage() {
                   ✓ 提交答卷
                 </Button>
               </Card>
-              <Card variant="ghost" className="p-4 text-xs text-ink-500">
-                📖 词典：点击阅读区任意单词唤起 · 已掌握词绿色徽章 · 生词蓝色徽章
-              </Card>
+              <p className="px-2 text-xs leading-5 text-ink-400">点击阅读区任意单词查看释义；绿色为已掌握，蓝色为生词。</p>
             </>
           ) : (
             <ResultPanel

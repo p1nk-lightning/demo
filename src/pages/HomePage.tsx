@@ -1,245 +1,252 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAppStore } from '@/store/useAppStore';
-import { DifficultyPicker } from '@/components/DifficultyPicker';
-import { generateArticle } from '@/lib/llm';
 import {
-  getCurrentVocab,
-  listAllArticles,
-  loadDifficultySetting,
-  saveDifficultySetting,
-} from '@/lib/storage';
-import { debounce, sample } from '@/lib/utils';
-import { Badge, Button, Card, CardSkeleton, EmptyState } from '@/components/ui';
-import type { Difficulty } from '@/types/domain';
+  ArrowRight,
+  BookOpen,
+  Clock3,
+  LibraryBig,
+  Sparkles,
+} from 'lucide-react';
+import { DAILY_ARTICLES } from '@/lib/dailyArticles';
+import {
+  getVocabularyItems,
+  listVocabularyLists,
+  setActiveVocabularyListId,
+} from '@/lib/db';
+import { saveArticle } from '@/lib/storage';
+import { generateArticle } from '@/lib/llm';
+import { useAppStore } from '@/store/useAppStore';
+import type {
+  ArticleTopic,
+  Difficulty,
+  VocabularyList,
+} from '@/types/domain';
+
+const LEVELS: { value: Difficulty; label: string }[] = [
+  { value: 'CET4', label: 'CET-4' },
+  { value: 'CET6', label: 'CET-6' },
+  { value: '考研', label: '考研' },
+  { value: '雅思', label: '雅思' },
+  { value: '托福', label: '托福' },
+];
+const LENGTHS = [100, 300, 500, 700, 1000];
+const TOPICS: ArticleTopic[] = ['随机', '科技', '文化', '教育', '生活', '商业', '自然'];
 
 export function HomePage() {
   const navigate = useNavigate();
-  const words = useAppStore((s) => s.words);
-  const difficulty = useAppStore((s) => s.difficulty);
-  const setWords = useAppStore((s) => s.setWords);
-  const setDifficulty = useAppStore((s) => s.setDifficulty);
-  const setCurrentArticle = useAppStore((s) => s.setCurrentArticle);
-  const resetAnswers = useAppStore((s) => s.resetAnswers);
-  const setLoading = useAppStore((s) => s.setLoading);
-  const loading = useAppStore((s) => s.loading);
-  const toast = useAppStore((s) => s.toast);
-
-  const [articleCount, setArticleCount] = useState(0);
+  const toast = useAppStore((state) => state.toast);
+  const setCurrentArticle = useAppStore((state) => state.setCurrentArticle);
+  const setWords = useAppStore((state) => state.setWords);
+  const resetAnswers = useAppStore((state) => state.resetAnswers);
+  const [level, setLevel] = useState<Difficulty>('CET4');
+  const [lists, setLists] = useState<VocabularyList[]>([]);
+  const [listId, setListId] = useState('');
+  const [wordCount, setWordCount] = useState(300);
+  const [topic, setTopic] = useState<ArticleTopic>('随机');
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const saved = await getCurrentVocab();
-      if (saved) setWords(saved);
-      const d = loadDifficultySetting();
-      if (d) setDifficulty(d);
-      const arts = await listAllArticles();
-      setArticleCount(arts.length);
-    })();
-  }, [setWords, setDifficulty]);
+    listVocabularyLists().then((items) => {
+      setLists(items);
+      if (items[0]) setListId(items[0].id);
+    });
+  }, []);
 
-  function handleDifficulty(d: Difficulty) {
-    setDifficulty(d);
-    saveDifficultySetting(d);
+  const daily = useMemo(
+    () => DAILY_ARTICLES.find((article) => article.difficulty === level)!,
+    [level],
+  );
+
+  async function openDaily() {
+    await saveArticle(daily);
+    setCurrentArticle(daily);
+    resetAnswers();
+    navigate(`/reading/${daily.id}`);
   }
 
-  const handleGenerate = useRef(
-    debounce(async () => {
-      if (words.length === 0) {
-        toast('请先导入词表', 'error');
-        navigate('/vocab');
-        return;
-      }
-      setLoading(true);
-      resetAnswers();
-      try {
-        const sampleWords = sample(
-          words.map((w) => w.normalized),
-          Math.min(50, words.length),
-        );
-        const article = await generateArticle({ difficulty, sampleWords });
-        setCurrentArticle(article);
-        navigate(`/reading/${article.id}`);
-      } catch (err: any) {
-        toast(err?.message || '生成失败，请稍后重试', 'error');
-      } finally {
-        setLoading(false);
-      }
-    }, 3000),
-  ).current;
-
-  const emptyVocab = words.length === 0;
+  async function handleGenerate() {
+    if (!listId) {
+      toast('请先创建一个单词表', 'error');
+      navigate('/library/import');
+      return;
+    }
+    const items = await getVocabularyItems(listId);
+    if (!items.length) {
+      toast('这个单词表还是空的', 'error');
+      return;
+    }
+    setGenerating(true);
+    setWords(items);
+    setActiveVocabularyListId(listId);
+    resetAnswers();
+    try {
+      const sampleWords = items
+        .filter((word) => !word.mastered)
+        .slice(0, 50)
+        .map((word) => word.normalized);
+      const questionCount = wordCount < 400 ? 3 : 5;
+      const article = await generateArticle({
+        difficulty: level,
+        sampleWords: sampleWords.length ? sampleWords : items.slice(0, 50).map((word) => word.normalized),
+        wordCount,
+        topic,
+        questionCount,
+      });
+      setCurrentArticle(article);
+      navigate(`/reading/${article.id}`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : '生成失败，请检查 API 设置', 'error');
+    } finally {
+      setGenerating(false);
+    }
+  }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8">
-      {/* Hero 标题区（参考 LingVo：粗黑大标题 + 一行 subtitle） */}
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight text-ink-900 sm:text-4xl">
-          词遇读 <span className="text-brand-600">·</span> 通过阅读巩固你的词表
-        </h1>
-        <p className="mt-2 text-base text-ink-500">
-          基于你已背单词的英文阅读巩固训练 ·{' '}
-          <span className="num text-ink-700">{words.length}</span> 个词 ·
-          难度 <span className="text-ink-700">{difficulty}</span>
-        </p>
-      </header>
-
-      {/* 3 张大卡：词表 / 生成 / 历史（LingVo 文章卡风格）+ 1 张难度小卡 */}
-      <div className="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {/* 词表卡 */}
-        <Card hoverable className="flex flex-col">
-          <div className="flex items-center gap-2 text-sm font-medium text-ink-500">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-              📚
-            </span>
-            词表
-          </div>
-          <div className="mt-3 flex items-baseline gap-1">
-            <span className="text-4xl font-bold text-ink-900 num">
-              {words.length}
-            </span>
-            <span className="text-sm text-ink-500">词</span>
-          </div>
-          <div className="mt-auto pt-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/vocab')}
-              trailing="›"
-            >
-              管理
-            </Button>
-          </div>
-        </Card>
-
-        {/* 生成阅读卡：LingVo 风格主 CTA */}
-        <Card
-          hoverable
-          className="flex flex-col"
-          style={{
-            background:
-              emptyVocab
-                ? undefined
-                : 'linear-gradient(135deg, #eef2ff 0%, #ffffff 100%)',
-          }}
-        >
-          <div className="flex items-center gap-2 text-sm font-medium text-ink-500">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-              ✨
-            </span>
-            生成阅读
-          </div>
-          <div className="mt-3 text-sm text-ink-700">
-            {loading ? (
-              '正在生成…'
-            ) : emptyVocab ? (
-              '导入词表后开始'
-            ) : (
-              <>
-                从词表中抽 <span className="font-semibold num">50</span>{' '}
-                个词生成一篇
-              </>
-            )}
-          </div>
-          <div className="mt-auto pt-4">
-            <Button
-              variant="primary"
-              size="md"
-              onClick={handleGenerate}
-              loading={loading}
-              trailing="›"
-            >
-              {loading ? '生成中' : '开始生成'}
-            </Button>
-          </div>
-        </Card>
-
-        {/* 历史卡 */}
-        <Card hoverable className="flex flex-col">
-          <div className="flex items-center gap-2 text-sm font-medium text-ink-500">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-              📊
-            </span>
-            历史
-          </div>
-          <div className="mt-3 flex items-baseline gap-1">
-            <span className="text-4xl font-bold text-ink-900 num">
-              {articleCount}
-            </span>
-            <span className="text-sm text-ink-500">篇</span>
-          </div>
-          <div className="mt-auto pt-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => navigate('/history')}
-              trailing="›"
-            >
-              查看
-            </Button>
-          </div>
-        </Card>
-
-        {/* 难度卡 */}
-        <Card className="flex flex-col">
-          <div className="flex items-center gap-2 text-sm font-medium text-ink-500">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-              ⚙️
-            </span>
-            难度
-          </div>
-          <div className="mt-3 text-2xl font-bold text-ink-900">
-            {difficulty}
-          </div>
-          <div className="mt-auto pt-4">
-            <DifficultyPicker value={difficulty} onChange={handleDifficulty} />
-          </div>
-        </Card>
-      </div>
-
-      {/* 空状态：词表为空时醒目提示（LingVo "你将学到什么" 风格淡蓝紫渐变） */}
-      {emptyVocab && (
-        <div
-          className="mb-6 rounded-2xl border border-brand-100 p-6"
-          style={{
-            background: 'linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%)',
-          }}
-        >
-          <EmptyState
-            icon="📚"
-            title="还没有词表"
-            description="从 TXT 粘贴或 Excel 上传你的背单词清单，立即开始训练。"
-            action={
-              <Button onClick={() => navigate('/vocab')} trailing="›">
-                立即导入
-              </Button>
-            }
-          />
+    <div className="mx-auto max-w-7xl px-5 py-8 lg:px-8 lg:py-10">
+      <section className="mb-10 flex flex-col justify-between gap-6 lg:flex-row lg:items-end">
+        <div>
+          <p className="mb-3 text-sm font-semibold text-brand-700">今日阅读计划</p>
+          <h1 className="max-w-3xl font-display text-4xl font-medium leading-[1.08] text-ink-950 sm:text-5xl">
+            在真实语境里，<br className="hidden sm:block" />让单词真正留下来。
+          </h1>
+          <p className="mt-4 max-w-xl text-base leading-7 text-ink-500">
+            每天读一篇适合你的英文文章，或用自己的单词表生成专属内容。
+          </p>
         </div>
-      )}
+        <button
+          onClick={() => navigate('/library/import')}
+          className="group inline-flex h-12 items-center justify-center gap-3 self-start rounded-full border border-ink-900 px-5 text-sm font-semibold text-ink-900 transition-colors hover:bg-ink-900 hover:text-white lg:self-auto"
+        >
+          导入新单词表
+          <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
+        </button>
+      </section>
 
-      {/* 信息条 */}
-      <div
-        role="status"
-        aria-live="polite"
-        className="rounded-2xl border border-ink-200 bg-paper p-4 text-sm text-ink-600"
-      >
-        ⓘ 词表已就绪（<span className="num">{words.length}</span> 词） ·
-        难度：<span className="font-medium text-ink-700">{difficulty}</span> ·{' '}
-        {articleCount > 0
-          ? `最近文章 ${new Date().toLocaleDateString()}`
-          : '尚未生成文章'}
-      </div>
-
-      {/* 加载骨架：4 张灰卡 */}
-      {loading && (
-        <div className="mt-6 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
-          <CardSkeleton />
+      <section aria-labelledby="daily-title" className="mb-12">
+        <div className="mb-5 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+          <div>
+            <h2 id="daily-title" className="text-xl font-bold text-ink-900">每日推荐</h2>
+            <p className="mt-1 text-sm text-ink-500">每天按你的目标难度更新一篇</p>
+          </div>
+          <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg bg-ink-100 p-1">
+            {LEVELS.map((item) => (
+              <button
+                key={item.value}
+                onClick={() => setLevel(item.value)}
+                className={`min-h-9 whitespace-nowrap rounded-lg px-3 text-sm font-semibold transition-colors ${
+                  level === item.value
+                    ? 'bg-white text-brand-700 shadow-sm'
+                    : 'text-ink-500 hover:text-ink-900'
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
-      )}
+
+        <article className="grid overflow-hidden rounded-lg border border-ink-200 bg-white shadow-card lg:grid-cols-[1.08fr_0.92fr]">
+          <div className="relative h-48 overflow-hidden sm:h-64 lg:h-auto lg:min-h-[390px]">
+            <img
+              src={daily.coverUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 hover:scale-[1.025]"
+            />
+            <span className="absolute left-5 top-5 rounded-full bg-white/90 px-3 py-1 text-xs font-bold text-brand-700 backdrop-blur">
+              今日 · {level}
+            </span>
+          </div>
+          <div className="flex flex-col justify-between p-6 sm:p-8 lg:p-10">
+            <div>
+              <div className="mb-5 flex items-center gap-4 text-xs font-medium text-ink-400">
+                <span className="inline-flex items-center gap-1.5"><Clock3 size={14} />{daily.estimatedMinutes} 分钟</span>
+                <span>{daily.wordCount} 词</span>
+                <span>{daily.topic}</span>
+              </div>
+              <h3 className="font-display text-3xl font-medium leading-tight text-ink-950">
+                {daily.title}
+              </h3>
+              <p className="mt-4 leading-7 text-ink-500">{daily.summary}</p>
+            </div>
+            <button
+              onClick={openDaily}
+              className="group mt-8 inline-flex h-12 items-center justify-between rounded-full bg-brand-600 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700"
+            >
+              开始今日阅读
+              <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />
+            </button>
+          </div>
+        </article>
+      </section>
+
+      <section className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="rounded-lg border border-brand-100 bg-brand-50 p-6 sm:p-8">
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <div className="mb-3 grid h-10 w-10 place-items-center rounded-lg bg-white text-brand-700 shadow-sm">
+                <Sparkles size={20} />
+              </div>
+              <h2 className="text-xl font-bold">用我的单词生成文章</h2>
+              <p className="mt-1 text-sm text-ink-500">选择单词表、长度和主题，创建专属阅读。</p>
+            </div>
+          </div>
+
+          <div className="grid gap-5 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="field-label">单词表</span>
+              <select value={listId} onChange={(event) => setListId(event.target.value)} className="field-control">
+                <option value="">选择一个单词表</option>
+                {lists.map((list) => <option key={list.id} value={list.id}>{list.name} · {list.wordCount} 词</option>)}
+              </select>
+            </label>
+            <div>
+              <span className="field-label">文章长度</span>
+              <div className="flex flex-wrap gap-2">
+                {LENGTHS.map((length) => (
+                  <button
+                    key={length}
+                    onClick={() => setWordCount(length)}
+                    className={`h-9 rounded-full px-3 text-sm font-semibold ${wordCount === length ? 'bg-brand-600 text-white' : 'bg-white text-ink-500 hover:text-brand-700'}`}
+                  >
+                    {length}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="block">
+              <span className="field-label">文章主题</span>
+              <select value={topic} onChange={(event) => setTopic(event.target.value as ArticleTopic)} className="field-control">
+                {TOPICS.map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </label>
+          </div>
+          <button
+            onClick={handleGenerate}
+            disabled={generating}
+            className="group mt-6 inline-flex h-12 min-w-40 items-center justify-center gap-3 rounded-full bg-ink-950 px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {generating ? '正在生成…' : '生成专属文章'}
+            {!generating && <ArrowRight size={17} className="transition-transform group-hover:translate-x-1" />}
+          </button>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+          <button onClick={() => navigate('/library')} className="group flex items-center justify-between rounded-lg border border-ink-200 bg-white p-6 text-left transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-card-hover">
+            <span className="flex items-center gap-4">
+              <span className="grid h-11 w-11 place-items-center rounded-lg bg-ink-100 text-ink-700"><LibraryBig size={21} /></span>
+              <span><strong className="block">我的单词表</strong><span className="mt-1 block text-sm text-ink-400">{lists.length} 个单词表</span></span>
+            </span>
+            <ArrowRight size={18} className="text-ink-300 transition-transform group-hover:translate-x-1 group-hover:text-brand-600" />
+          </button>
+          <button onClick={() => navigate('/history')} className="group flex items-center justify-between rounded-lg border border-ink-200 bg-white p-6 text-left transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-card-hover">
+            <span className="flex items-center gap-4">
+              <span className="grid h-11 w-11 place-items-center rounded-lg bg-ink-100 text-ink-700"><BookOpen size={21} /></span>
+              <span><strong className="block">阅读记录</strong><span className="mt-1 block text-sm text-ink-400">回顾文章与答题结果</span></span>
+            </span>
+            <ArrowRight size={18} className="text-ink-300 transition-transform group-hover:translate-x-1 group-hover:text-brand-600" />
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,9 +1,9 @@
 {
-  "name": "readai",
+  "name": "lexiscene",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "description": "Readai / 词遇读 — 基于用户词库的英语阅读巩固训练工具",
+  "description": "词境阅读 / LexiScene — 在真实语境中巩固用户词汇的英语阅读工具",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -13,7 +13,9 @@
     "worker:deploy": "cd worker && wrangler deploy"
   },
   "dependencies": {
+    "dexie": "^4.4.4",
     "idb-keyval": "^6.2.1",
+    "lucide-react": "^1.28.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2",

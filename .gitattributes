@@ -1,0 +1,11 @@
+# 自动检测文本文件，统一 CRLF（Windows 友好）
+* text=auto eol=crlf
+
+# 这些文件保持 LF（跨平台配置）
+*.json text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.md text eol=lf
+*.css text eol=lf
+*.toml text eol=lf

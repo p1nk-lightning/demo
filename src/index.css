@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+  body {
+    @apply bg-canvas text-ink-900 font-sans antialiased;
+  }
+  *:focus-visible {
+    outline: 2px solid theme('colors.brand.500');
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /* 阅读视图里的单词 span（sans-serif，对齐 LingVo 风格） */
+  .word-token {
+    @apply cursor-pointer px-[1px] rounded-sm transition-colors duration-150;
+  }
+  .word-token:hover {
+    background-color: theme('colors.brand.50');
+  }
+  .word-token.is-known {
+    color: theme('colors.accent.600');
+    border-bottom: 2px solid theme('colors.accent.500');
+  }
+  .word-token.is-new {
+    color: theme('colors.brand.600');
+    border-bottom: 2px dashed theme('colors.brand.500');
+  }
+  .word-token.flash {
+    animation: flash 800ms ease-out;
+  }
+
+  /* 文章正文样式：sans-serif、宽行高、最大宽度 72ch */
+  .article-prose {
+    @apply text-ink-800;
+    font-family: theme('fontFamily.sans');
+    font-size: 17px;
+    line-height: 1.85;
+    max-width: 72ch;
+  }
+  .article-prose p + p {
+    margin-top: 1em;
+  }
+
+  /* LingVo 风格 pill 按钮基类 */
+  .btn-base {
+    @apply inline-flex items-center justify-center gap-2 rounded-full font-medium
+      transition-colors transition-transform duration-150
+      focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2
+      active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  /* 卡片基类：白底 + 轻边框 + 轻阴影（LingVo 风格） */
+  .card-base {
+    @apply rounded-2xl bg-paper border border-ink-200 shadow-card;
+  }
+
+  .chip-base {
+    @apply inline-flex items-center gap-1 rounded-full text-xs font-medium px-2 py-0.5;
+  }
+}

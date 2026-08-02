@@ -1,0 +1,12 @@
+name = "readai-worker"
+main = "src/index.ts"
+compatibility_date = "2024-06-20"
+
+[vars]
+# 非敏感默认可在 wrangler.toml 中
+# 敏感 key (DEEPSEEK_API_KEY / MOONSHOT_API_KEY) 通过 .dev.vars 或 dashboard 配置
+
+# 限流用 KV
+[[kv_namespaces]]
+binding = "RL"
+id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"

@@ -58,11 +58,11 @@ export function ImportPage() {
             <textarea value={text} onChange={(event) => setText(event.target.value)} className="min-h-72 w-full resize-y rounded-lg border border-ink-200 bg-ink-50 p-4 font-mono text-sm leading-7 outline-none transition-colors focus:border-brand-400 focus:bg-white" placeholder={'每行一个单词，也支持逗号分隔\nanalyze\ncontext\nreconstruct'} />
           ) : (
             <>
-              <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) parseFile(file); }} />
+              <input ref={fileRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) parseFile(file); }} />
               <button onClick={() => fileRef.current?.click()} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files?.[0]; if (file) parseFile(file); }} className="flex min-h-72 w-full flex-col items-center justify-center rounded-lg border border-dashed border-brand-200 bg-brand-50 px-6 text-center hover:border-brand-400">
                 <UploadCloud size={31} className="text-brand-600" />
                 <strong className="mt-4 text-sm">点击选择或拖入文件</strong>
-                <span className="mt-2 text-xs text-ink-400">支持 .xlsx、.xls 和 .csv</span>
+                <span className="mt-2 text-xs text-ink-400">支持 .xlsx 和 .csv</span>
                 {fileName && <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-xs text-ink-600"><FileSpreadsheet size={14} />{fileName}</span>}
               </button>
             </>

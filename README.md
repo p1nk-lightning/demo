@@ -29,7 +29,7 @@ V2 MVP 基线已完成：
 - 后端：Cloudflare Workers + Hono
 - 云端内容数据库：Cloudflare D1
 - 数据校验：Zod
-- 文件导入：SheetJS
+- 文件导入：read-excel-file（`.xlsx`）+ 原生 CSV 解析
 - 图标：Lucide React
 
 ## 本地启动

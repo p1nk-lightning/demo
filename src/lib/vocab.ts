@@ -2,7 +2,7 @@
 // BR-01 归一化: 小写、去前后空白、去前后标点
 // BR-02 去重: 同一归一化词仅保留一次, 来源标注
 
-import * as XLSX from 'xlsx';
+import { readSheet } from 'read-excel-file/browser';
 import type { Word } from '@/types/domain';
 
 export function normalizeWord(raw: string): string {
@@ -77,12 +77,15 @@ export function parseTXT(input: string): ParseResult {
 
 /** Excel 解析: 取第一个 sheet 的第一列非空值 */
 export async function parseXLSX(file: File): Promise<ParseResult> {
-  const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
-  const first = wb.SheetNames[0];
-  if (!first) return { words: [], raw: [], rejected: [], duplicates: 0 };
-  const sheet = wb.Sheets[first];
-  const rows: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (file.name.toLowerCase().endsWith('.csv')) {
+    const parsed = parseTXT(await file.text());
+    return {
+      ...parsed,
+      words: parsed.words.map((word) => ({ ...word, source: 'xlsx' as const })),
+    };
+  }
+
+  const rows = await readSheet(file);
 
   const map = new Map<string, Word>();
   const raw: string[] = [];
@@ -91,10 +94,9 @@ export async function parseXLSX(file: File): Promise<ParseResult> {
   let startedHeader = false;
 
   for (const row of rows) {
-    if (!Array.isArray(row)) continue;
     for (const cell of row) {
       if (cell == null) continue;
-      const s = String(cell).trim();
+      const s = String(cell ?? '').trim();
       if (!s) continue;
 
       // 跳过表头: 第一行若 cell 中含有常见中文表头, 视为表头

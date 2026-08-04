@@ -9,11 +9,11 @@ compatibility_date = "2024-06-20"
 # 创建 D1 后取消注释，并填入 wrangler 返回的 database_id：
 # [[d1_databases]]
 # binding = "DB"
-# database_name = "lexiscene-v2"
+# database_name = "lexiscene-v3"
 # database_id = "YOUR_D1_DATABASE_ID"
 # migrations_dir = "migrations"
 
 # 限流用 KV
-[[kv_namespaces]]
-binding = "RL"
-id = "REPLACE_WITH_REAL_KV_NAMESPACE_ID"
+# [[kv_namespaces]]
+# binding = "RL"
+# id = "YOUR_KV_NAMESPACE_ID"

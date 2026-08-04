@@ -4,8 +4,12 @@ import {
   History,
   House,
   LibraryBig,
+  LogIn,
+  LogOut,
   Settings2,
+  UserRound,
 } from 'lucide-react';
+import { useAuthStore } from '@/store/useAuthStore';
 
 const NAV_ITEMS = [
   { to: '/', label: '今日阅读', icon: House, end: true },
@@ -16,6 +20,17 @@ const NAV_ITEMS = [
 
 export function AppShell() {
   const location = useLocation();
+  const user = useAuthStore((state) => state.user);
+  const authStatus = useAuthStore((state) => state.status);
+  const logout = useAuthStore((state) => state.logout);
+
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // The local state is cleared by the auth store even when the request cannot finish.
+    }
+  }
 
   return (
     <div className="min-h-full bg-canvas text-ink-900">
@@ -51,6 +66,24 @@ export function AppShell() {
               </NavLink>
             ))}
           </nav>
+
+          <div className="flex items-center gap-2">
+            {authStatus === 'authenticated' && user ? (
+              <>
+                <span className="hidden max-w-[180px] items-center gap-2 text-sm text-ink-600 sm:flex" title={user.email}>
+                  <UserRound size={16} className="shrink-0 text-brand-600" />
+                  <span className="truncate">{user.email}</span>
+                </span>
+                <button type="button" className="icon-button h-9 w-9" onClick={() => void handleLogout()} title="退出登录" aria-label="退出登录">
+                  <LogOut size={17} />
+                </button>
+              </>
+            ) : (
+              <NavLink to="/login" className="icon-button h-9 w-9" title="登录" aria-label="登录">
+                <LogIn size={17} />
+              </NavLink>
+            )}
+          </div>
 
           <div className="hidden items-center gap-2 text-xs text-ink-400 sm:flex">
             <span className="h-2 w-2 rounded-full bg-emerald-400" />

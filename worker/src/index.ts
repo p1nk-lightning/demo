@@ -7,6 +7,7 @@ export interface Env {
   MOONSHOT_API_KEY?: string;
   RL?: KVNamespace;
   DB?: D1Database;
+  FRONTEND_ORIGIN?: string;
 }
 
 type Difficulty = 'CET4' | 'CET6' | '考研' | '雅思' | '托福';
@@ -36,6 +37,11 @@ const GenerateRequestSchema = z.object({
   questionCount: z.union([z.literal(3), z.literal(5)]).default(5),
   provider: ProviderSchema.optional(),
 });
+const RegisterRequestSchema = z.object({
+  email: z.string().trim().email().max(254),
+  password: z.string().min(8).max(128),
+});
+const LoginRequestSchema = RegisterRequestSchema;
 
 const DIFFICULTY_PROMPT: Record<Difficulty, string> = {
   CET4: 'CET-4 level, common vocabulary, direct sentences, familiar daily topics.',
@@ -47,11 +53,133 @@ const DIFFICULTY_PROMPT: Record<Difficulty, string> = {
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use('*', cors({
-  origin: '*',
+app.use('/api/*', async (context, next) => cors({
+  origin: context.env.FRONTEND_ORIGIN || 'http://localhost:5173',
   allowHeaders: ['Content-Type', 'X-Provider-Key'],
   allowMethods: ['GET', 'POST', 'OPTIONS'],
-}));
+  credentials: true,
+})(context, next));
+
+const SESSION_COOKIE_NAME = 'lexiscene_session';
+const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const PASSWORD_ITERATIONS = 210_000;
+
+interface AuthUser {
+  id: string;
+  email: string;
+  email_verified_at: number | null;
+  created_at: number;
+}
+
+function bytesToBase64(bytes: Uint8Array) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function randomToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256(value: string) {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return bytesToBase64(new Uint8Array(hash));
+}
+
+async function derivePasswordHash(password: string, salt: Uint8Array, iterations: number) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits({
+    name: 'PBKDF2',
+    hash: 'SHA-512',
+    salt,
+    iterations,
+  }, key, 512);
+  return new Uint8Array(bits);
+}
+
+async function hashPassword(password: string) {
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  const hash = await derivePasswordHash(password, salt, PASSWORD_ITERATIONS);
+  return `pbkdf2-sha512$${PASSWORD_ITERATIONS}$${bytesToBase64(salt)}$${bytesToBase64(hash)}`;
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array) {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) difference |= left[index] ^ right[index];
+  return difference === 0;
+}
+
+async function verifyPassword(password: string, storedHash: string) {
+  const [algorithm, iterationValue, saltValue, expectedValue] = storedHash.split('$');
+  const iterations = Number(iterationValue);
+  if (algorithm !== 'pbkdf2-sha512' || !Number.isInteger(iterations) || iterations < 100_000 || !saltValue || !expectedValue) {
+    return false;
+  }
+  try {
+    const actual = await derivePasswordHash(password, base64ToBytes(saltValue), iterations);
+    return sameBytes(actual, base64ToBytes(expectedValue));
+  } catch {
+    return false;
+  }
+}
+
+function getCookie(request: Request, name: string) {
+  const prefix = `${name}=`;
+  return request.headers.get('Cookie')?.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))?.slice(prefix.length);
+}
+
+function sessionCookie(request: Request, token: string, maxAge: number) {
+  const secure = new URL(request.url).protocol === 'https:' ? '; Secure' : '';
+  return `${SESSION_COOKIE_NAME}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secure}`;
+}
+
+function clearSessionCookie(request: Request) {
+  return sessionCookie(request, '', 0);
+}
+
+function publicUser(user: AuthUser) {
+  return {
+    id: user.id,
+    email: user.email,
+    emailVerified: user.email_verified_at !== null,
+    createdAt: user.created_at,
+  };
+}
+
+async function createSession(database: D1Database, userId: string) {
+  const now = Date.now();
+  const token = randomToken();
+  await database.prepare(
+    'INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).bind(crypto.randomUUID(), userId, await sha256(token), now + SESSION_TTL_MS, now, now).run();
+  return token;
+}
+
+async function getSessionUser(database: D1Database, request: Request) {
+  const token = getCookie(request, SESSION_COOKIE_NAME);
+  if (!token) return null;
+  const now = Date.now();
+  const session = await database.prepare(
+    'SELECT users.id, users.email, users.email_verified_at, users.created_at, sessions.id AS session_id FROM sessions JOIN users ON users.id = sessions.user_id WHERE sessions.token_hash = ? AND sessions.expires_at > ?',
+  ).bind(await sha256(token), now).first<AuthUser & { session_id: string }>();
+  if (!session) return null;
+  await database.prepare('UPDATE sessions SET last_seen_at = ? WHERE id = ?').bind(now, session.session_id).run();
+  return session;
+}
+
+async function deleteCurrentSession(database: D1Database, request: Request) {
+  const token = getCookie(request, SESSION_COOKIE_NAME);
+  if (token) await database.prepare('DELETE FROM sessions WHERE token_hash = ?').bind(await sha256(token)).run();
+}
 
 function completionUrl(baseUrl: string) {
   const clean = baseUrl.replace(/\/$/, '');
@@ -143,6 +271,86 @@ async function checkRateLimit(env: Env, ip: string) {
 }
 
 app.get('/healthz', (context) => context.json({ ok: true, product: 'LexiScene', version: 2 }));
+
+app.post('/api/auth/register', async (context) => {
+  if (!(await checkRateLimit(context.env, getClientIp(context.req.raw)))) {
+    return context.json({ error: '请求过于频繁，请稍后再试' }, 429);
+  }
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+
+  const parsed = RegisterRequestSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) {
+    return context.json({ error: '请输入有效邮箱和至少 8 位的密码' }, 400);
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const existing = await context.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
+  if (existing) return context.json({ error: '该邮箱已注册，请直接登录' }, 409);
+
+  const now = Date.now();
+  const user: AuthUser & { password_hash: string } = {
+    id: crypto.randomUUID(),
+    email,
+    password_hash: await hashPassword(parsed.data.password),
+    email_verified_at: null,
+    created_at: now,
+  };
+
+  try {
+    await context.env.DB.prepare(
+      'INSERT INTO users (id, email, password_hash, email_verified_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+    ).bind(user.id, user.email, user.password_hash, user.email_verified_at, now, now).run();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('UNIQUE constraint failed: users.email')) {
+      return context.json({ error: '该邮箱已注册，请直接登录' }, 409);
+    }
+    return context.json({ error: '暂时无法创建账号，请稍后再试' }, 500);
+  }
+
+  const sessionToken = await createSession(context.env.DB, user.id);
+  context.header('Set-Cookie', sessionCookie(context.req.raw, sessionToken, SESSION_TTL_MS / 1000));
+  context.header('Cache-Control', 'no-store');
+  return context.json({ user: publicUser(user) }, 201);
+});
+
+app.post('/api/auth/login', async (context) => {
+  if (!(await checkRateLimit(context.env, getClientIp(context.req.raw)))) {
+    return context.json({ error: '请求过于频繁，请稍后再试' }, 429);
+  }
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+
+  const parsed = LoginRequestSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: '邮箱或密码错误' }, 400);
+
+  const email = parsed.data.email.toLowerCase();
+  const user = await context.env.DB.prepare(
+    'SELECT id, email, password_hash, email_verified_at, created_at FROM users WHERE email = ?',
+  ).bind(email).first<AuthUser & { password_hash: string }>();
+  if (!user || !(await verifyPassword(parsed.data.password, user.password_hash))) {
+    return context.json({ error: '邮箱或密码错误' }, 401);
+  }
+
+  const sessionToken = await createSession(context.env.DB, user.id);
+  context.header('Set-Cookie', sessionCookie(context.req.raw, sessionToken, SESSION_TTL_MS / 1000));
+  context.header('Cache-Control', 'no-store');
+  return context.json({ user: publicUser(user) });
+});
+
+app.post('/api/auth/logout', async (context) => {
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+  await deleteCurrentSession(context.env.DB, context.req.raw);
+  context.header('Set-Cookie', clearSessionCookie(context.req.raw));
+  context.header('Cache-Control', 'no-store');
+  return context.json({ ok: true });
+});
+
+app.get('/api/auth/me', async (context) => {
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+  const user = await getSessionUser(context.env.DB, context.req.raw);
+  context.header('Cache-Control', 'no-store');
+  if (!user) return context.json({ error: '未登录' }, 401);
+  return context.json({ user: publicUser(user) });
+});
 
 app.post('/api/test-provider', async (context) => {
   const key = context.req.header('x-provider-key');

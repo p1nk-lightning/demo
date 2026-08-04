@@ -1,10 +1,21 @@
 # 依赖
 node_modules/
+.npm/
+.pnpm-store/
 dist/
 .venv/
 
+# 本地环境变量与密钥（保留 *.example 模板文件）
+.env
+*/.env
+.env.local
+.env.*.local
+*/.env.local
+*/.env.*.local
+.dev.vars
+*/.dev.vars
+
 # Worker
-worker/.dev.vars
 worker/dist/
 .wrangler/
 
@@ -12,11 +23,20 @@ worker/dist/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
+.vite/
+coverage/
+.nyc_output/
+.cache/
 
 # IDE
 .vscode/
 .idea/
 .DS_Store
+Thumbs.db
+
+# 临时文件
+tmp/
+temp/
 
 # 日志
 npm-debug.log*

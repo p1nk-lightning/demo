@@ -4,14 +4,14 @@ compatibility_date = "2024-06-20"
 
 [vars]
 # 非敏感默认可在 wrangler.toml 中
-# 敏感 key (DEEPSEEK_API_KEY / MOONSHOT_API_KEY) 通过 .dev.vars 或 dashboard 配置
+# 敏感 key（模型、Turnstile、Resend）通过 .dev.vars 或 Cloudflare dashboard 配置
 
 # 创建 D1 后取消注释，并填入 wrangler 返回的 database_id：
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "lexiscene-v3"
-# database_id = "YOUR_D1_DATABASE_ID"
-# migrations_dir = "migrations"
+[[d1_databases]]
+binding = "DB"
+database_name = "lexiscene"
+database_id = "5ee7a76f-42e0-479d-909a-21ffa41b58f1"
+migrations_dir = "migrations"
 
 # 限流用 KV
 # [[kv_namespaces]]

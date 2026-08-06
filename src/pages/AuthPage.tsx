@@ -1,7 +1,8 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useCallback, useState } from 'react';
 import { AtSign, Eye, EyeOff, LockKeyhole, LogIn, UserPlus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
+import { TurnstileWidget } from '@/components/TurnstileWidget';
 import { useAuthStore } from '@/store/useAuthStore';
 
 type AuthMode = 'login' | 'register';
@@ -20,7 +21,11 @@ export function AuthPage({ mode }: AuthPageProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileAttempt, setTurnstileAttempt] = useState(0);
   const isRegister = mode === 'register';
+  const handleTurnstileToken = useCallback((token: string) => setTurnstileToken(token), []);
+  const handleTurnstileExpire = useCallback(() => setTurnstileToken(''), []);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,10 +36,22 @@ export function AuthPage({ mode }: AuthPageProps) {
     }
     setSubmitting(true);
     try {
-      if (isRegister) await register(email.trim(), password);
-      else await login(email.trim(), password);
-      navigate('/', { replace: true });
+      if (isRegister) {
+        if (!turnstileToken) {
+          setError('请完成人机验证');
+          return;
+        }
+        const result = await register(email.trim(), password, turnstileToken);
+        navigate('/verify-email', { replace: true, state: { verificationEmailSent: result.verificationEmailSent } });
+      } else {
+        await login(email.trim(), password);
+        navigate('/', { replace: true });
+      }
     } catch (requestError) {
+      if (isRegister) {
+        setTurnstileToken('');
+        setTurnstileAttempt((value) => value + 1);
+      }
       setError(requestError instanceof Error ? requestError.message : '暂时无法完成操作，请稍后再试');
     } finally {
       setSubmitting(false);
@@ -79,9 +96,11 @@ export function AuthPage({ mode }: AuthPageProps) {
               <input className="field-control" type={showPassword ? 'text' : 'password'} value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
             </label>}
 
+            {isRegister && <TurnstileWidget key={turnstileAttempt} onToken={handleTurnstileToken} onExpire={handleTurnstileExpire} />}
+
             {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{error}</p>}
 
-            <Button type="submit" fullWidth size="lg" loading={submitting} trailing={isRegister ? <UserPlus size={17} /> : <LogIn size={17} />}>
+            <Button type="submit" fullWidth size="lg" loading={submitting} disabled={isRegister && !turnstileToken} trailing={isRegister ? <UserPlus size={17} /> : <LogIn size={17} />}>
               {isRegister ? '创建账号' : '登录'}
             </Button>
           </form>

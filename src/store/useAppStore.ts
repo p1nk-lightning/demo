@@ -18,6 +18,7 @@ interface AppState {
   currentAnswers: (number | null)[];
   setAnswer: (idx: number, val: number | null) => void;
   resetAnswers: () => void;
+  resetSessionState: () => void;
   // UI
   loading: boolean;
   setLoading: (b: boolean) => void;
@@ -48,6 +49,11 @@ export const useAppStore = create<AppState>((set) => ({
       return { currentAnswers: next };
     }),
   resetAnswers: () => set({ currentAnswers: [null, null, null, null, null] }),
+  resetSessionState: () => set({
+    words: [],
+    currentArticle: null,
+    currentAnswers: [null, null, null, null, null],
+  }),
 
   loading: false,
   setLoading: (b) => set({ loading: b }),
@@ -73,10 +79,13 @@ export function buildProgress(
   answers: (number | null)[],
   score: number,
 ): UserProgress {
+  const now = Date.now();
   return {
+    id: crypto.randomUUID(),
     articleId,
     answers,
     score,
-    completedAt: Date.now(),
+    completedAt: now,
+    updatedAt: now,
   };
 }

@@ -1,38 +1,21 @@
 // 给前端的 LLM 调用封装
 import type { Article, GenerateRequest } from '@/types/domain';
-import { getActiveApiProfile } from './db';
 import { saveArticle } from './storage';
-import { uid } from './utils';
-
-const BASE = import.meta.env.VITE_WORKER_URL || 'http://localhost:8787';
+import { apiBaseUrl, apiRequest } from './apiClient';
 
 export async function generateArticle(
   req: GenerateRequest,
   signal?: AbortSignal,
 ): Promise<Article> {
-  const profile = await getActiveApiProfile();
-  const res = await fetch(`${BASE}/api/generate`, {
+  const data = await apiRequest<Omit<Article, 'id' | 'createdAt'> & { articleId: string }>('/api/generate', {
     method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      ...(profile?.apiKey ? { 'x-provider-key': profile.apiKey } : {}),
-    },
-    body: JSON.stringify({
-      ...req,
-      provider: profile
-        ? { baseUrl: profile.baseUrl, model: profile.model }
-        : undefined,
-    }),
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(req),
     signal,
   });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`生成失败 (${res.status}): ${t || res.statusText}`);
-  }
-  const data = (await res.json()) as Omit<Article, 'id' | 'createdAt'>;
   // 构造 Article
   const article: Article = {
-    id: uid(),
+    id: data.articleId,
     title: data.title,
     article: data.article,
     questions: data.questions,
@@ -43,6 +26,8 @@ export async function generateArticle(
     wordCount: req.wordCount,
     estimatedMinutes: Math.max(1, Math.ceil((req.wordCount ?? 300) / 180)),
     source: 'generated',
+    provider: data.provider,
+    model: data.model,
   };
   // 立即落本地存储
   await saveArticle(article);
@@ -52,7 +37,7 @@ export async function generateArticle(
 // 健康检查
 export async function pingWorker(): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE}/healthz`);
+    const res = await fetch(`${apiBaseUrl}/healthz`);
     return res.ok;
   } catch {
     return false;
@@ -61,5 +46,5 @@ export async function pingWorker(): Promise<boolean> {
 
 // 取 worker base, 便于测试
 export function workerBase(): string {
-  return BASE;
+  return apiBaseUrl;
 }

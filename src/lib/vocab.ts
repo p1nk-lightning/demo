@@ -63,7 +63,7 @@ export function parseTXT(input: string): ParseResult {
       text: t.trim().replace(/[\.,;:!?…，。；：！？]+$/g, ''),
       normalized: n,
       source: 'pasted',
-      addedAt: Date.now() + Object.keys(map).length, // 保证有序
+      addedAt: Date.now() + map.size, // 保证有序
     });
   }
 
@@ -119,14 +119,17 @@ export async function parseXLSX(file: File): Promise<ParseResult> {
         text: s.replace(/[\.,;:!?…，。；：！？]+$/g, ''),
         normalized: n,
         source: 'xlsx',
-        addedAt: Date.now() + Object.keys(map).length,
+        addedAt: Date.now() + map.size,
       });
     }
   }
   // 兜底: 万一表头全跳了导致第一个词丢了, 退回到纯文本解析
   if (map.size === 0 && raw.length > 0) {
     const fb = parseTXT(raw.join('\n'));
-    return { ...fb };
+    return {
+      ...fb,
+      words: fb.words.map((word) => ({ ...word, source: 'xlsx' as const })),
+    };
   }
 
   return { words: Array.from(map.values()), raw, rejected, duplicates };

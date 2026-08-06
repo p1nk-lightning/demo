@@ -9,17 +9,18 @@ export interface AuthUser {
 
 interface AuthResponse {
   user: AuthUser;
+  verificationEmailSent?: boolean;
 }
 
 export function getCurrentUser() {
   return apiRequest<AuthResponse>('/api/auth/me');
 }
 
-export function registerWithEmail(email: string, password: string) {
+export function registerWithEmail(email: string, password: string, turnstileToken: string) {
   return apiRequest<AuthResponse>('/api/auth/register', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, turnstileToken }),
   });
 }
 
@@ -33,4 +34,16 @@ export function loginWithEmail(email: string, password: string) {
 
 export function logout() {
   return apiRequest<{ ok: true }>('/api/auth/logout', { method: 'POST' });
+}
+
+export function verifyEmail(code: string) {
+  return apiRequest<{ ok: true }>('/api/auth/verify-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code }),
+  });
+}
+
+export function resendVerification() {
+  return apiRequest<{ ok: true; alreadyVerified?: boolean }>('/api/auth/resend-verification', { method: 'POST' });
 }

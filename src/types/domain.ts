@@ -2,6 +2,7 @@ export type Difficulty = 'CET4' | 'CET6' | '考研' | '雅思' | '托福';
 
 export type WordSource = 'pasted' | 'xlsx' | 'reading';
 export type ArticleTopic = '随机' | '科技' | '文化' | '教育' | '生活' | '商业' | '自然';
+export type ModelProvider = 'deepseek' | 'qwen' | 'doubao';
 
 export interface Word {
   id?: string;
@@ -15,6 +16,7 @@ export interface Word {
 
 export interface VocabularyList {
   id: string;
+  ownerId?: string | null;
   name: string;
   difficulty: Difficulty;
   wordCount: number;
@@ -23,13 +25,16 @@ export interface VocabularyList {
   updatedAt: number;
   lastUsedAt?: number;
   schemaVersion: 2;
+  deletedAt?: number;
 }
 
 export interface VocabularyItem extends Word {
   id: string;
+  ownerId?: string | null;
   listId: string;
   mastered: boolean;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 export interface Question {
@@ -40,6 +45,9 @@ export interface Question {
 
 export interface Article {
   id: string;
+  /** IndexedDB-only key; the stable cloud identity remains id. */
+  localId?: string;
+  ownerId?: string | null;
   title: string;
   article: string;
   questions: Question[];
@@ -51,32 +59,27 @@ export interface Article {
   wordCount?: number;
   estimatedMinutes?: number;
   source?: 'generated' | 'daily';
+  provider?: ModelProvider;
+  model?: string;
   coverUrl?: string;
   publishDate?: string;
+  updatedAt?: number;
+  deletedAt?: number;
 }
 
 export interface UserProgress {
+  id: string;
+  ownerId?: string | null;
   articleId: string;
   answers: (number | null)[];
   score: number;
   completedAt: number;
-}
-
-export type ApiProvider = 'deepseek' | 'moonshot' | 'openai-compatible';
-
-export interface ApiProfile {
-  id: string;
-  provider: ApiProvider;
-  name: string;
-  baseUrl: string;
-  model: string;
-  apiKey: string;
-  isActive: 0 | 1;
-  createdAt: number;
   updatedAt: number;
+  deletedAt?: number;
 }
 
 export interface GenerateRequest {
+  provider: ModelProvider;
   difficulty: Difficulty;
   sampleWords: string[];
   wordCount?: number;

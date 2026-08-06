@@ -10,15 +10,19 @@ import {
 import { DAILY_ARTICLES } from '@/lib/dailyArticles';
 import {
   getVocabularyItems,
+  getSelectedModelProvider,
   listVocabularyLists,
+  setSelectedModelProvider,
   setActiveVocabularyListId,
 } from '@/lib/db';
 import { saveArticle } from '@/lib/storage';
 import { generateArticle } from '@/lib/llm';
 import { useAppStore } from '@/store/useAppStore';
+import { useAuthStore } from '@/store/useAuthStore';
 import type {
   ArticleTopic,
   Difficulty,
+  ModelProvider,
   VocabularyList,
 } from '@/types/domain';
 
@@ -38,19 +42,25 @@ export function HomePage() {
   const setCurrentArticle = useAppStore((state) => state.setCurrentArticle);
   const setWords = useAppStore((state) => state.setWords);
   const resetAnswers = useAppStore((state) => state.resetAnswers);
+  const user = useAuthStore((state) => state.user);
   const [level, setLevel] = useState<Difficulty>('CET4');
   const [lists, setLists] = useState<VocabularyList[]>([]);
   const [listId, setListId] = useState('');
   const [wordCount, setWordCount] = useState(300);
   const [topic, setTopic] = useState<ArticleTopic>('随机');
   const [generating, setGenerating] = useState(false);
+  const [provider, setProvider] = useState<ModelProvider>('deepseek');
 
   useEffect(() => {
     listVocabularyLists().then((items) => {
       setLists(items);
       if (items[0]) setListId(items[0].id);
     });
-  }, []);
+  }, [user?.id]);
+
+  useEffect(() => {
+    void getSelectedModelProvider().then(setProvider);
+  }, [user?.id]);
 
   const daily = useMemo(
     () => DAILY_ARTICLES.find((article) => article.difficulty === level)!,
@@ -65,6 +75,16 @@ export function HomePage() {
   }
 
   async function handleGenerate() {
+    if (!user) {
+      toast('请先登录后再生成文章', 'error');
+      navigate('/login');
+      return;
+    }
+    if (!user.emailVerified) {
+      toast('请先验证邮箱后再生成文章', 'error');
+      navigate('/verify-email');
+      return;
+    }
     if (!listId) {
       toast('请先创建一个单词表', 'error');
       navigate('/library/import');
@@ -86,6 +106,7 @@ export function HomePage() {
         .map((word) => word.normalized);
       const questionCount = wordCount < 400 ? 3 : 5;
       const article = await generateArticle({
+        provider,
         difficulty: level,
         sampleWords: sampleWords.length ? sampleWords : items.slice(0, 50).map((word) => word.normalized),
         wordCount,
@@ -217,6 +238,22 @@ export function HomePage() {
               <span className="field-label">文章主题</span>
               <select value={topic} onChange={(event) => setTopic(event.target.value as ArticleTopic)} className="field-control">
                 {TOPICS.map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="field-label">生成模型</span>
+              <select
+                value={provider}
+                onChange={(event) => {
+                  const value = event.target.value as ModelProvider;
+                  setProvider(value);
+                  void setSelectedModelProvider(value);
+                }}
+                className="field-control"
+              >
+                <option value="deepseek">DeepSeek</option>
+                <option value="qwen">千问</option>
+                <option value="doubao">豆包</option>
               </select>
             </label>
           </div>

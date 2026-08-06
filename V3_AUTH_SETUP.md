@@ -1,23 +1,89 @@
-# V3 email authentication
+# LexiScene 账号与邮箱验证配置
 
-The Web app uses a cookie session owned by the Cloudflare Worker. Passwords are salted and stored as PBKDF2-SHA-512 hashes. The browser never stores the password or the session token in local storage.
+> 最后更新：2026-08-06
 
-## Local development
+当前 Web 应用使用 Cloudflare Worker 管理账号、Cookie 会话、邮箱验证码和 D1 数据同步。
 
-1. Copy `.env.example` to `.env.local`.
-2. Copy `worker/.dev.vars.example` to `worker/.dev.vars`.
-3. Start the Worker with `npm run worker:dev` and the Web app with `npm run dev`.
+## 已实现
 
-The Worker allows the origin defined by `FRONTEND_ORIGIN`. Keep the production Web app and Worker on the same site or explicitly set the production origin before deploying.
+- 邮箱和密码注册、登录、退出
+- PBKDF2-SHA-512 密码哈希，浏览器不保存密码和会话令牌
+- Resend 发送 6 位数字验证码，10 分钟有效
+- 前端和后端双重限制：验证码邮件 60 秒内只能请求一次
+- Cloudflare Turnstile 注册防滥用
+- 登录后按用户隔离 IndexedDB 数据并同步到 D1
+- 离线保存，网络恢复后自动补传
 
-## Cloudflare deployment
+## 本地配置
 
-Create the D1 database, put its generated `database_id` in `worker/wrangler.toml`, then apply migrations:
+前端使用根目录 `.env.local`：
 
-```powershell
-cd worker
-npx wrangler d1 migrations apply lexiscene-v3 --remote
-npx wrangler deploy
+```env
+VITE_API_BASE_URL=http://127.0.0.1:8787
+VITE_TURNSTILE_SITE_KEY=你的_Turnstile_Site_Key
 ```
 
-Before public release, add email verification and a password reset flow. `users.email_verified_at` is already reserved for that work.
+Worker 使用 `worker/.dev.vars`。需要配置的变量名如下，密钥值不要写入文档或提交 Git：
+
+```env
+TURNSTILE_SECRET_KEY=
+RESEND_API_KEY=
+EMAIL_FROM=
+FRONTEND_ORIGIN=http://127.0.0.1:5173
+
+DEEPSEEK_API_KEY=
+DASHSCOPE_API_KEY=
+ARK_API_KEY=
+DEEPSEEK_MODEL=deepseek-chat
+QWEN_MODEL=qwen-plus
+DOUBAO_MODEL=
+```
+
+启动命令：
+
+```powershell
+cd E:\demo\readai\v2
+npm run worker:dev
+npm run dev
+```
+
+访问地址：
+
+- 前端：`http://127.0.0.1:5173`
+- Worker：`http://127.0.0.1:8787`
+- 健康检查：`http://127.0.0.1:8787/healthz`
+
+## D1 配置
+
+当前云端数据库：
+
+```text
+database_name: lexiscene
+database_id: 5ee7a76f-42e0-479d-909a-21ffa41b58f1
+```
+
+检查迁移状态：
+
+```powershell
+cd E:\demo\readai\v2\worker
+npx wrangler d1 migrations list lexiscene --remote
+```
+
+应用新迁移：
+
+```powershell
+npx wrangler d1 migrations apply lexiscene --remote
+```
+
+不要把数据库名写成 `lexiscene-v3`。不要修改已经应用到云端的旧迁移；新增表或字段时继续创建 `0005_*.sql`、`0006_*.sql`。
+
+`0004_generation_and_verification.sql` 包含 SQLite `ALTER TABLE ... ADD COLUMN`，不能在 D1 Console 中整份手动重复执行。Wrangler 会依据迁移历史避免重复执行。
+
+## 生产部署注意事项
+
+- Vercel 必须配置正式的 `VITE_API_BASE_URL` 和 Turnstile Site Key。
+- Cloudflare Worker 必须配置模型、Resend、Turnstile 密钥和正式 `FRONTEND_ORIGIN`。
+- HTTPS Worker 会使用 `Secure; SameSite=None` Cookie，以支持分域前端。
+- 部分浏览器会限制第三方 Cookie。正式上线更推荐把 Worker 绑定到产品自有域名的 API 子域名，或让 Vercel 同域代理 `/api`。
+- 当前没有配置 Cloudflare KV，生产环境限流仍是单 Worker 实例内存回退；公开发布前应绑定 KV 或实现 D1 限流。
+- 尚未实现忘记密码和修改密码功能。

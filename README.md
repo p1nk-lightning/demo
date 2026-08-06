@@ -1,4 +1,21 @@
-# 词境阅读 · LexiScene V2
+# 词境阅读 · LexiScene
+
+> **当前说明：** 账号、邮箱验证码、平台内置模型和 D1 用户同步已经加入。下面保留的是 V2 历史基线，不能再作为当前配置说明。
+>
+> 当前开发请阅读 `V3_DEVELOPMENT_HANDOFF.md`、`V3_DEVELOPMENT_LOG.md` 和 `V3_AUTH_SETUP.md`。
+
+## 当前开发版摘要
+
+- 邮箱注册、登录、6 位验证码和 60 秒重发限制
+- Turnstile + Resend
+- DeepSeek、千问、豆包平台内置模型
+- Dexie 本地优先和 D1 账号同步
+- 当前 D1：`lexiscene`，不是 `lexiscene-v2` 或 `lexiscene-v3`
+- 本地地址：Web `http://127.0.0.1:5173`，Worker `http://127.0.0.1:8787`
+
+---
+
+## V2 历史基线（已过期）
 
 > 让背过的词，在语境里真正留下来。
 > Read words in context. Make them stay.

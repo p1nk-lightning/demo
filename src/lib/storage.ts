@@ -11,6 +11,8 @@ import {
   db,
   listVocabularyLists,
 } from '@/lib/db';
+import { getLocalOwnerId, isOwnedBy, scopedKey } from '@/lib/localScope';
+import { scheduleSync } from '@/lib/syncScheduler';
 
 // 存储键约定完全对齐 Prd.md §5
 // - vocab:current                 → 当前激活词表 (Word[], 仅存归一化数组, 节省空间)
@@ -25,12 +27,15 @@ const LS_DIFFICULTY = 'settings:difficulty';
 
 export async function saveCurrentVocab(words: Word[], difficulty: Difficulty) {
   const list = await createVocabularyList('导入单词表', difficulty, words);
-  await set(KEY_CURRENT_VOCAB, words); // 仅存 Words 用于快速启动
+  await set(scopedKey(KEY_CURRENT_VOCAB), words); // 仅存 Words 用于快速启动
   return list;
 }
 
 export async function getCurrentVocab(): Promise<Word[] | undefined> {
-  return (await get<Word[]>(KEY_CURRENT_VOCAB)) ?? undefined;
+  const scoped = await get<Word[]>(scopedKey(KEY_CURRENT_VOCAB));
+  if (scoped) return scoped;
+  if (getLocalOwnerId() === null) return (await get<Word[]>(KEY_CURRENT_VOCAB)) ?? undefined;
+  return undefined;
 }
 
 export async function listAllVocabs(): Promise<VocabularyList[]> {
@@ -38,31 +43,52 @@ export async function listAllVocabs(): Promise<VocabularyList[]> {
 }
 
 export async function clearCurrentVocab() {
-  await del(KEY_CURRENT_VOCAB);
+  await del(scopedKey(KEY_CURRENT_VOCAB));
 }
 
 // ---- 文章 ----
 
 export async function saveArticle(article: Article) {
-  await db.articles.put(article);
+  const updatedAt = Date.now();
+  await db.articleRecords.put({
+    ...article,
+    ownerId: getLocalOwnerId(),
+    localId: `${getLocalOwnerId() ?? 'anonymous'}:${article.id}`,
+    updatedAt,
+  });
+  scheduleSync(getLocalOwnerId());
 }
 
 export async function getArticle(id: string): Promise<Article | undefined> {
-  return (await db.articles.get(id)) ?? undefined;
+  const articles = await db.articleRecords.where('id').equals(id).toArray();
+  return articles.find((article) => isOwnedBy(article) && !article.deletedAt);
 }
 
 export async function listAllArticles(): Promise<Article[]> {
-  return db.articles.orderBy('createdAt').reverse().toArray();
+  return db.articleRecords.toArray().then((articles) => articles
+    .filter((article) => isOwnedBy(article) && !article.deletedAt)
+    .sort((left, right) => right.createdAt - left.createdAt));
 }
 
 // ---- 进度 ----
 
 export async function saveProgress(progress: UserProgress) {
-  await db.progress.put(progress);
+  const existing = await getProgress(progress.articleId);
+  const updatedAt = Date.now();
+  await db.progressRecords.put({
+    ...progress,
+    id: existing?.id ?? progress.id,
+    ownerId: getLocalOwnerId(),
+    updatedAt,
+  });
+  scheduleSync(getLocalOwnerId());
 }
 
 export async function getProgress(articleId: string): Promise<UserProgress | undefined> {
-  return (await db.progress.get(articleId)) ?? undefined;
+  const records = await db.progressRecords.where('articleId').equals(articleId).toArray();
+  return records
+    .filter((record) => isOwnedBy(record) && !record.deletedAt)
+    .sort((left, right) => right.updatedAt - left.updatedAt)[0];
 }
 
 // ---- 设置 (localStorage) ----

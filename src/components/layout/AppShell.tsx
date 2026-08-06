@@ -6,16 +6,15 @@ import {
   LibraryBig,
   LogIn,
   LogOut,
-  Settings2,
   UserRound,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useSyncStore } from '@/lib/sync';
 
 const NAV_ITEMS = [
   { to: '/', label: '今日阅读', icon: House, end: true },
   { to: '/library', label: '单词表', icon: LibraryBig, end: false },
   { to: '/history', label: '阅读记录', icon: History, end: false },
-  { to: '/settings/api', label: 'API 设置', icon: Settings2, end: false },
 ] as const;
 
 export function AppShell() {
@@ -23,6 +22,28 @@ export function AppShell() {
   const user = useAuthStore((state) => state.user);
   const authStatus = useAuthStore((state) => state.status);
   const logout = useAuthStore((state) => state.logout);
+  const syncStatus = useSyncStore((state) => state.status);
+  const needsMerge = useSyncStore((state) => state.needsMerge);
+  const legacyCount = useSyncStore((state) => state.legacyCount);
+  const mergeLegacyData = useSyncStore((state) => state.mergeLegacyData);
+  const dismissMerge = useSyncStore((state) => state.dismissMerge);
+  const dataRevision = useSyncStore((state) => state.dataRevision);
+  const syncDotClass = syncStatus === 'syncing'
+    ? 'bg-amber-400'
+    : syncStatus === 'error'
+      ? 'bg-red-400'
+      : syncStatus === 'offline'
+        ? 'bg-ink-300'
+        : 'bg-emerald-400';
+  const syncLabel = !user
+    ? '本机模式'
+    : syncStatus === 'syncing'
+    ? '正在同步'
+    : syncStatus === 'offline'
+      ? '离线模式'
+      : syncStatus === 'error'
+        ? '同步待重试'
+        : '已同步';
 
   async function handleLogout() {
     try {
@@ -85,14 +106,25 @@ export function AppShell() {
             )}
           </div>
 
-          <div className="hidden items-center gap-2 text-xs text-ink-400 sm:flex">
-            <span className="h-2 w-2 rounded-full bg-emerald-400" />
-            数据仅保存在本机
+          <div className="hidden items-center gap-2 text-xs text-ink-400 sm:flex" title="云端同步状态">
+            <span className={'h-2 w-2 rounded-full ' + syncDotClass} />
+            {syncLabel}
           </div>
         </div>
       </header>
 
-      <main key={location.pathname} className="page-enter pb-24 md:pb-10">
+      {needsMerge && user && (
+        <div className="border-b border-amber-200 bg-amber-50">
+          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm lg:px-8">
+            <span className="text-amber-900">检测到本机有 {legacyCount} 条未绑定账号的数据。</span>
+            <span className="flex items-center gap-3">
+              <button type="button" onClick={() => void mergeLegacyData()} className="font-semibold text-amber-900 underline underline-offset-4">合并本机数据</button>
+              <button type="button" onClick={dismissMerge} className="text-amber-700">稍后处理</button>
+            </span>
+          </div>
+        </div>
+      )}
+      <main key={location.pathname + ':' + (user?.id ?? 'anonymous') + ':' + dataRevision} className="page-enter pb-24 md:pb-10">
         <Outlet />
       </main>
 
@@ -100,7 +132,7 @@ export function AppShell() {
         className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-200 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden"
         aria-label="移动端导航"
       >
-        <div className="grid grid-cols-4">
+        <div className="grid grid-cols-3">
           {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}

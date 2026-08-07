@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { DAILY_ARTICLES } from '@/lib/dailyArticles';
+import { getDailyArticles } from '@/lib/content';
 import {
   getVocabularyItems,
   getSelectedModelProvider,
@@ -20,6 +21,7 @@ import { generateArticle } from '@/lib/llm';
 import { useAppStore } from '@/store/useAppStore';
 import { useAuthStore } from '@/store/useAuthStore';
 import type {
+  Article,
   ArticleTopic,
   Difficulty,
   ModelProvider,
@@ -50,6 +52,7 @@ export function HomePage() {
   const [topic, setTopic] = useState<ArticleTopic>('随机');
   const [generating, setGenerating] = useState(false);
   const [provider, setProvider] = useState<ModelProvider>('deepseek');
+  const [dailyArticles, setDailyArticles] = useState<Article[]>(DAILY_ARTICLES);
 
   useEffect(() => {
     listVocabularyLists().then((items) => {
@@ -62,9 +65,24 @@ export function HomePage() {
     void getSelectedModelProvider().then(setProvider);
   }, [user?.id]);
 
+  useEffect(() => {
+    let active = true;
+    void getDailyArticles(level).then((items) => {
+      if (active && items.length) setDailyArticles((current) => [
+        ...current.filter((article) => article.difficulty !== level),
+        ...items,
+      ]);
+    }).catch(() => {
+      // Keep the bundled fallback when the Worker is offline.
+    });
+    return () => {
+      active = false;
+    };
+  }, [level]);
+
   const daily = useMemo(
-    () => DAILY_ARTICLES.find((article) => article.difficulty === level)!,
-    [level],
+    () => dailyArticles.find((article) => article.difficulty === level) ?? DAILY_ARTICLES.find((article) => article.difficulty === level)!,
+    [dailyArticles, level],
   );
 
   async function openDaily() {

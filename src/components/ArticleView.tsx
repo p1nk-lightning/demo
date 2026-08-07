@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { tokenize } from '@/lib/highlight';
 import { WordTooltip } from './WordTooltip';
 import type { Article, Word } from '@/types/domain';
@@ -7,9 +7,11 @@ interface Props {
   article: Article;
   words: Word[];
   onPick?: (normalized: string) => void;
+  highlightKnown?: boolean;
+  highlightNew?: boolean;
 }
 
-export function ArticleView({ article, words, onPick }: Props) {
+export function ArticleView({ article, words, onPick, highlightKnown = true, highlightNew = true }: Props) {
   const vocabSet = useMemo(() => {
     const s = new Set<string>();
     for (const w of words) s.add(w.normalized);
@@ -26,11 +28,33 @@ export function ArticleView({ article, words, onPick }: Props) {
   // 单词 span refs（用于碰撞检测）
   const wordRefs = useRef<Array<HTMLSpanElement | null>>([]);
 
+  useEffect(() => {
+    function closePinnedTooltip(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.word-token')) return;
+      setPinnedIdx(null);
+      setHoverIdx(null);
+    }
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setPinnedIdx(null);
+        setHoverIdx(null);
+      }
+    }
+    document.addEventListener('pointerdown', closePinnedTooltip);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closePinnedTooltip);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, []);
+
   return (
     <article className="article-prose">
       {tokens.map((tk, i) => {
         if (tk.kind === 'sep') return <span key={i}>{tk.text}</span>;
-        const cls = 'word-token ' + (tk.isKnown ? 'is-known' : 'is-new');
+        const highlighted = tk.isKnown ? highlightKnown : highlightNew;
+        const cls = 'word-token ' + (highlighted ? (tk.isKnown ? 'is-known' : 'is-new') : '');
         const isActive = activeIdx === i;
         return (
           <span

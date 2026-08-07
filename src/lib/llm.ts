@@ -3,16 +3,39 @@ import type { Article, GenerateRequest } from '@/types/domain';
 import { saveArticle } from './storage';
 import { apiBaseUrl, apiRequest } from './apiClient';
 
-export async function generateArticle(
-  req: GenerateRequest,
-  signal?: AbortSignal,
-): Promise<Article> {
-  const data = await apiRequest<Omit<Article, 'id' | 'createdAt'> & { articleId: string }>('/api/generate', {
+type GeneratedArticleResponse = Omit<Article, 'id' | 'createdAt'> & { articleId: string };
+
+async function requestGeneratedArticle(req: GenerateRequest, signal?: AbortSignal): Promise<GeneratedArticleResponse> {
+  const localProxyUrl = import.meta.env.DEV ? import.meta.env.VITE_LOCAL_LLM_PROXY_URL?.replace(/\/$/, '') : undefined;
+  if (localProxyUrl && req.provider === 'deepseek') {
+    const response = await fetch(`${localProxyUrl}/api/generate`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+      signal,
+    });
+    const data = await response.json().catch(() => null) as { error?: string } | GeneratedArticleResponse | null;
+    if (!response.ok) {
+      const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : '本机模型代理请求失败';
+      throw new Error(message);
+    }
+    return data as GeneratedArticleResponse;
+  }
+  return apiRequest<GeneratedArticleResponse>('/api/generate', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(req),
     signal,
   });
+}
+
+export async function generateArticle(
+  req: GenerateRequest,
+  signal?: AbortSignal,
+): Promise<Article> {
+  const data = await requestGeneratedArticle(req, signal);
   // 构造 Article
   const article: Article = {
     id: data.articleId,

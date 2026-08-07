@@ -1,4 +1,10 @@
+DEEPSEEK_GENERATION_API_KEY=your_deepseek_generation_api_key
+DEEPSEEK_REVIEW_API_KEY=your_deepseek_review_api_key
+# Legacy fallback for an existing local installation. New setups should use the two keys above.
 DEEPSEEK_API_KEY=your_deepseek_api_key
+# Optional local-only proxy for wrangler dev environments that cannot reach DeepSeek directly.
+DEEPSEEK_DEV_PROXY_URL=http://127.0.0.1:8788
+DEEPSEEK_DEV_PROXY_TOKEN=replace_with_a_local_random_token
 DASHSCOPE_API_KEY=your_dashscope_api_key
 ARK_API_KEY=your_volcengine_ark_api_key
 DEEPSEEK_MODEL=deepseek-chat
@@ -8,3 +14,4 @@ TURNSTILE_SECRET_KEY=your_turnstile_secret_key
 RESEND_API_KEY=re_your_resend_api_key
 EMAIL_FROM=LexiScene <verify@example.com>
 FRONTEND_ORIGIN=http://127.0.0.1:5173
+ADMIN_EMAILS=your_admin_email@example.com

@@ -1,5 +1,42 @@
 # 词境阅读 · LexiScene
 
+## 当前版本新增内容
+
+- 内置 ECDICT 英汉词典数据：完整层 15,000 条，LexiScene 核心层 6,000 条；两个词典层合计 21,000 条记录。
+- 内置 14,514 条常见词形映射，`trees`、`leaves` 等变形会自动回退到原形查词。
+- 查词顺序：本地缓存 -> Worker D1 内置词典（含词形） -> 外部词典兜底。
+- 首批 100 篇英语学习文章已生成，按 CET4、CET6、考研、雅思、托福各 20 篇保存为候选内容；每篇实际 400 至 1000 词（当前本地库为 404 至 970 词）。
+- 文章生成脚本会读取公开 RSS 的标题、摘要和链接作为事实线索，由 DeepSeek 重新创作英文学习文章，不复制来源全文；当前网络环境本批次实际使用了可访问的 NPR 公开 RSS，其他来源已登记到来源目录，后续抓取可用时再补充。
+- 新闻只作为事实素材，文章正文为原创改写；候选内容审核后才发布。
+- 管理员可先用 DeepSeek AI 预审文章，再人工确认加入文章池；普通用户界面不显示审核入口。
+- 文章池由 Cloudflare Cron 每天北京时间 07:00 检查，每两天按难度轮换一次；每篇文章带一张来源页 Open Graph 封面或主题备用封面。
+- 阅读页支持收藏，收藏文章可在 `/#/favorites` 查看。
+
+批量生成候选文章（只写入本地 D1）：
+
+```powershell
+cd E:\demo\readai\v2\worker
+npm run seed:content-pool
+```
+
+脚本支持 `--count`、`--offset`、`--concurrency`、`--remote` 和 `--replace-candidates`；首次替换候选内容时才使用 `--replace-candidates`，不要删除已审核或已发布文章。长文生成需要在 `worker/.dev.vars` 中配置 `DEEPSEEK_GENERATION_API_KEY`，并保留 `thinking: { type: 'disabled' }`。
+
+## 初始化内容库
+
+```powershell
+cd E:\demo\readai\v2
+New-Item -ItemType Directory -Force tmp
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv" -OutFile "tmp\ecdict.csv"
+cd worker
+npx wrangler d1 migrations apply lexiscene --local
+cd ..
+node worker\scripts\seed-content.mjs --ecdict-file=tmp\ecdict.csv
+```
+
+部署前对远程 D1 执行同样的迁移和导入，但把 Wrangler 命令及种子脚本切换为 `--remote`。不要提交 `tmp`、真实环境变量、`.dev.vars`、`.env` 或 `.wrangler`。
+
+文章审核页是 `/#/admin/content`。在 Worker 的 `.dev.vars` 或 Cloudflare 环境变量中设置 `ADMIN_EMAILS=你的登录邮箱` 后，只有该邮箱能够读取候选文章并发布或归档。
+
 > **当前说明：** 账号、邮箱验证码、平台内置模型和 D1 用户同步已经加入。下面保留的是 V2 历史基线，不能再作为当前配置说明。
 >
 > 当前开发请阅读 `V3_DEVELOPMENT_HANDOFF.md`、`V3_DEVELOPMENT_LOG.md` 和 `V3_AUTH_SETUP.md`。

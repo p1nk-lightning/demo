@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "worker:dev": "cd worker && npm run dev",
-    "worker:dev:remote": "cd worker && npm run dev",
+    "worker:dev:remote": "cd worker && npm run dev:remote",
     "worker:deploy": "cd worker && wrangler deploy"
   },
   "dependencies": {

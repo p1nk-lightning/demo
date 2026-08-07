@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev --port 8787",
-    "dev:remote": "wrangler dev --port 8787",
+    "dev:remote": "wrangler dev --remote --port 8787",
+    "dev:llm-proxy": "node scripts/dev-llm-proxy.mjs",
+    "seed:content-pool": "node scripts/generate-content-pool.mjs --count=100 --replace-candidates",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit"
   },

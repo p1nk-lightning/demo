@@ -6,6 +6,7 @@ import {
   LibraryBig,
   LogIn,
   LogOut,
+  Star,
   UserRound,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
   { to: '/', label: '今日阅读', icon: House, end: true },
   { to: '/library', label: '单词表', icon: LibraryBig, end: false },
   { to: '/history', label: '阅读记录', icon: History, end: false },
+  { to: '/favorites', label: '我的收藏', icon: Star, end: false },
 ] as const;
 
 export function AppShell() {
@@ -132,7 +134,7 @@ export function AppShell() {
         className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-200 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden"
         aria-label="移动端导航"
       >
-        <div className="grid grid-cols-3">
+        <div className="grid grid-cols-4">
           {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}

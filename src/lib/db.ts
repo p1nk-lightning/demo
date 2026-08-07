@@ -100,7 +100,7 @@ export async function createVocabularyList(
     name: name.trim() || `未命名单词表 ${new Date(now).toLocaleDateString()}`,
     difficulty,
     wordCount: uniqueWords.length,
-    masteredCount: 0,
+    masteredCount: uniqueWords.filter((word) => Boolean(word.mastered)).length,
     createdAt: now,
     updatedAt: now,
     lastUsedAt: now,
@@ -160,6 +160,35 @@ export async function deleteVocabularyList(id: string) {
     await db.vocabLists.update(id, { deletedAt, updatedAt: deletedAt });
   });
   scheduleSync(getLocalOwnerId());
+}
+
+export async function mergeVocabularyLists(
+  listIds: string[],
+  name: string,
+  difficulty: Difficulty,
+): Promise<VocabularyList | undefined> {
+  const ids = Array.from(new Set(listIds));
+  if (ids.length < 2) return undefined;
+  const lists = (await Promise.all(ids.map((id) => getVocabularyList(id)))).filter((list): list is VocabularyList => Boolean(list));
+  if (lists.length < 2) return undefined;
+  const itemGroups = await Promise.all(lists.map((list) => getVocabularyItems(list.id)));
+  const merged = new Map<string, Word>();
+  for (const items of itemGroups) {
+    for (const item of items) {
+      const current = merged.get(item.normalized);
+      if (!current || (!current.mastered && item.mastered)) {
+        merged.set(item.normalized, {
+          text: item.text,
+          normalized: item.normalized,
+          source: item.source,
+          mastered: item.mastered,
+          addedAt: item.addedAt,
+          updatedAt: item.updatedAt,
+        });
+      }
+    }
+  }
+  return createVocabularyList(name, difficulty, Array.from(merged.values()));
 }
 
 export async function setWordMastery(id: string, mastered: boolean) {

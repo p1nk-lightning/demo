@@ -112,6 +112,7 @@ export function WordTooltip({ word, normalized, isKnown, anchorRef }: Props) {
           {isKnown ? '✓ 已掌握' : '✦ 新词'}
         </Badge>
       </div>
+      {entry?.dictionaryName && <div className="mb-1 text-[10px] text-ink-400">来源：{entry.dictionaryName}</div>}
       {entry?.phonetic && (
         <div className="text-xs text-ink-500">{entry.phonetic}</div>
       )}
@@ -123,6 +124,10 @@ export function WordTooltip({ word, normalized, isKnown, anchorRef }: Props) {
           {entry.meaningCN}
         </div>
       )}
+      {entry?.definitionEN && entry.meaningCN !== entry.definitionEN && (
+        <div className="mt-1 text-xs leading-5 text-ink-500">{entry.definitionEN}</div>
+      )}
+      {entry?.exampleEN && <div className="mt-1 text-xs italic leading-5 text-ink-400">{entry.exampleEN}</div>}
       {!entry && loading && (
         <div className="mt-1 text-xs text-ink-400">查询中…</div>
       )}

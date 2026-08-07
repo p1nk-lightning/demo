@@ -10,10 +10,12 @@ import { useAppStore } from '@/store/useAppStore';
 const HomePage = lazy(() => import('@/pages/HomePage').then((module) => ({ default: module.HomePage })));
 const ReadingPage = lazy(() => import('@/pages/ReadingPage').then((module) => ({ default: module.ReadingPage })));
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
+const FavoritesPage = lazy(() => import('@/pages/FavoritesPage').then((module) => ({ default: module.FavoritesPage })));
 const LibraryPage = lazy(() => import('@/pages/LibraryPage').then((module) => ({ default: module.LibraryPage })));
 const ImportPage = lazy(() => import('@/pages/ImportPage').then((module) => ({ default: module.ImportPage })));
 const AuthPage = lazy(() => import('@/pages/AuthPage').then((module) => ({ default: module.AuthPage })));
 const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then((module) => ({ default: module.VerifyEmailPage })));
+const AdminContentPage = lazy(() => import('@/pages/AdminContentPage').then((module) => ({ default: module.AdminContentPage })));
 
 function PageLoader() {
   return (
@@ -59,6 +61,8 @@ export function App() {
             <Route path="/library/import" element={<ImportPage />} />
             <Route path="/reading/:articleId" element={<ReadingPage />} />
             <Route path="/history" element={<HistoryPage />} />
+            <Route path="/favorites" element={<FavoritesPage />} />
+            <Route path="/admin/content" element={<AdminContentPage />} />
             <Route path="/vocab" element={<Navigate to="/library" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

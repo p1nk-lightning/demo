@@ -59,10 +59,14 @@ export interface Article {
   wordCount?: number;
   estimatedMinutes?: number;
   source?: 'generated' | 'daily';
+  contentId?: string;
   provider?: ModelProvider;
   model?: string;
   coverUrl?: string;
   publishDate?: string;
+  sourceTitle?: string;
+  sourceUrl?: string;
+  isFavorite?: boolean;
   updatedAt?: number;
   deletedAt?: number;
 }
@@ -90,8 +94,12 @@ export interface GenerateRequest {
 
 export interface DictEntry {
   word: string;
+  queriedWord?: string;
   phonetic?: string;
   partOfSpeech?: string;
+  dictionaryName?: string;
+  definitionEN?: string;
   meaningCN: string;
+  exampleEN?: string;
   fetchedAt: number;
 }

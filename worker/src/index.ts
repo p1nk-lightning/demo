@@ -3,12 +3,17 @@ import { cors } from 'hono/cors';
 import { z } from 'zod';
 
 export interface Env {
+  DEEPSEEK_GENERATION_API_KEY?: string;
+  DEEPSEEK_REVIEW_API_KEY?: string;
   DEEPSEEK_API_KEY?: string;
+  DEEPSEEK_DEV_PROXY_URL?: string;
+  DEEPSEEK_DEV_PROXY_TOKEN?: string;
   DASHSCOPE_API_KEY?: string;
   ARK_API_KEY?: string;
   DEEPSEEK_MODEL?: string;
   QWEN_MODEL?: string;
   DOUBAO_MODEL?: string;
+  ADMIN_EMAILS?: string;
   TURNSTILE_SECRET_KEY?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
@@ -110,6 +115,21 @@ const SyncPayloadSchema = z.object({
   vocabItems: z.array(SyncVocabItemSchema).max(20000),
   articles: z.array(SyncArticleSchema).max(2000),
   progress: z.array(SyncProgressSchema).max(5000),
+});
+const DictionaryBatchSchema = z.object({
+  words: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
+});
+const ContentReviewSchema = z.object({
+  action: z.enum(['approve', 'publish', 'archive', 'candidate']),
+  publishDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+const AiReviewSchema = z.object({
+  verdict: z.enum(['pass', 'needs_revision', 'reject']),
+  score: z.number().int().min(0).max(100),
+  summary: z.string().min(1).max(2000),
+  strengths: z.array(z.string().min(1).max(500)).max(8),
+  issues: z.array(z.string().min(1).max(500)).max(8),
+  factualChecks: z.array(z.string().min(1).max(500)).max(8),
 });
 
 const DIFFICULTY_PROMPT: Record<Difficulty, string> = {
@@ -266,11 +286,15 @@ function completionUrl(baseUrl: string) {
   return clean.endsWith('/chat/completions') ? clean : `${clean}/chat/completions`;
 }
 
-function assertSafeProviderUrl(raw: string) {
+function assertSafeProviderUrl(raw: string, allowLocalProxy = false) {
   const url = new URL(raw);
-  if (url.protocol !== 'https:') throw new Error('API 地址必须使用 HTTPS');
   const host = url.hostname.toLowerCase();
+  const isLoopback = host === 'localhost' || host === '127.0.0.1';
+  if (url.protocol !== 'https:' && !(allowLocalProxy && url.protocol === 'http:' && isLoopback)) {
+    throw new Error('API 地址必须使用 HTTPS');
+  }
   if (host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.endsWith('.local')) {
+    if (allowLocalProxy && isLoopback) return;
     throw new Error('不允许访问本地网络地址');
   }
 }
@@ -281,24 +305,32 @@ async function callProvider(options: {
   key: string;
   systemPrompt: string;
   userPrompt: string;
+  proxyToken?: string;
+  proxyPurpose?: 'generation' | 'review';
 }) {
-  assertSafeProviderUrl(options.baseUrl);
-  const response = await fetch(completionUrl(options.baseUrl), {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      authorization: 'Bearer ' + options.key,
-    },
-    body: JSON.stringify({
-      model: options.model,
-      messages: [
-        { role: 'system', content: options.systemPrompt },
-        { role: 'user', content: options.userPrompt },
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.65,
-    }),
-  });
+  assertSafeProviderUrl(options.baseUrl, Boolean(options.proxyToken));
+  let response: Response;
+  try {
+    response = await fetch(completionUrl(options.baseUrl), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer ' + (options.proxyToken ?? options.key),
+        ...(options.proxyPurpose ? { 'x-lexiscene-model-purpose': options.proxyPurpose } : {}),
+      },
+      body: JSON.stringify({
+        model: options.model,
+        messages: [
+          { role: 'system', content: options.systemPrompt },
+          { role: 'user', content: options.userPrompt },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0.65,
+      }),
+    });
+  } catch {
+    throw new Error('模型服务网络连接失败。请检查网络，或使用 worker:dev:remote 进行远程开发调试。');
+  }
   if (!response.ok) throw new Error(`模型服务返回 ${response.status}`);
   const data = await response.json() as {
     choices?: Array<{ message?: { content?: string } }>;
@@ -322,11 +354,21 @@ interface BuiltinProvider {
   baseUrl: string;
   model: string;
   key: string;
+  proxyToken?: string;
+  proxyPurpose?: 'generation' | 'review';
 }
 
 function getBuiltinProvider(env: Env, provider: ModelProvider): BuiltinProvider {
-  if (provider === 'deepseek' && env.DEEPSEEK_API_KEY) {
-    return { provider, baseUrl: 'https://api.deepseek.com/v1', model: env.DEEPSEEK_MODEL || 'deepseek-chat', key: env.DEEPSEEK_API_KEY };
+  if (provider === 'deepseek' && (env.DEEPSEEK_GENERATION_API_KEY || env.DEEPSEEK_API_KEY)) {
+    const useDevProxy = Boolean(env.DEEPSEEK_DEV_PROXY_URL && env.DEEPSEEK_DEV_PROXY_TOKEN);
+    return {
+      provider,
+      baseUrl: useDevProxy ? env.DEEPSEEK_DEV_PROXY_URL! : 'https://api.deepseek.com',
+      model: env.DEEPSEEK_MODEL || 'deepseek-chat',
+      key: env.DEEPSEEK_GENERATION_API_KEY || env.DEEPSEEK_API_KEY!,
+      proxyToken: useDevProxy ? env.DEEPSEEK_DEV_PROXY_TOKEN : undefined,
+      proxyPurpose: useDevProxy ? 'generation' : undefined,
+    };
   }
   if (provider === 'qwen' && env.DASHSCOPE_API_KEY) {
     return { provider, baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: env.QWEN_MODEL || 'qwen-plus', key: env.DASHSCOPE_API_KEY };
@@ -335,6 +377,19 @@ function getBuiltinProvider(env: Env, provider: ModelProvider): BuiltinProvider 
     return { provider, baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', model: env.DOUBAO_MODEL, key: env.ARK_API_KEY };
   }
   throw new Error('选定模型暂未配置，请稍后再试');
+}
+
+function getReviewProvider(env: Env): BuiltinProvider {
+  if (!env.DEEPSEEK_REVIEW_API_KEY) throw new Error('AI 审核 Key 尚未配置');
+  const useDevProxy = Boolean(env.DEEPSEEK_DEV_PROXY_URL && env.DEEPSEEK_DEV_PROXY_TOKEN);
+  return {
+    provider: 'deepseek',
+    baseUrl: useDevProxy ? env.DEEPSEEK_DEV_PROXY_URL! : 'https://api.deepseek.com',
+    model: env.DEEPSEEK_MODEL || 'deepseek-chat',
+    key: env.DEEPSEEK_REVIEW_API_KEY,
+    proxyToken: useDevProxy ? env.DEEPSEEK_DEV_PROXY_TOKEN : undefined,
+    proxyPurpose: useDevProxy ? 'review' : undefined,
+  };
 }
 
 function chinaDayKey(now = Date.now()) {
@@ -466,6 +521,85 @@ function parseJson<T>(value: unknown, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function normalizeDictionaryWord(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z'-]/g, '').slice(0, 80);
+}
+
+function isAdmin(env: Env, user: AuthUser) {
+  const emails = (env.ADMIN_EMAILS ?? '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean);
+  return emails.includes(user.email.toLowerCase());
+}
+
+function dictionaryItem(row: Record<string, unknown>) {
+  return {
+    dictionaryId: row.dictionary_id,
+    dictionaryName: row.dictionary_name,
+    word: row.headword,
+    phonetic: row.phonetic ?? undefined,
+    partOfSpeech: row.part_of_speech ?? undefined,
+    definitionEN: row.definition_en ?? undefined,
+    meaningCN: row.definition_zh ?? undefined,
+    exampleEN: row.example_en ?? undefined,
+    difficulty: row.difficulty ?? undefined,
+    frequencyRank: row.frequency_rank ?? undefined,
+  };
+}
+
+function contentItem(row: Record<string, unknown>, isFavorite = false) {
+  return {
+    id: row.id,
+    contentId: row.id,
+    title: row.title,
+    summary: row.summary,
+    article: row.content,
+    content: row.content,
+    difficulty: row.difficulty,
+    topic: row.topic,
+    questions: parseJson(row.questions_json, []),
+    vocabHitIds: [],
+    wordCount: row.word_count,
+    estimatedMinutes: row.estimated_minutes,
+    source: 'daily',
+    coverUrl: row.cover_url ?? undefined,
+    publishDate: row.publish_date ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    sourceTitle: row.source_title,
+    sourceUrl: row.source_url,
+    isFavorite,
+    aiReview: parseJson(row.ai_review_json, undefined),
+  };
+}
+
+const ROTATION_DIFFICULTIES: Difficulty[] = ['CET4', 'CET6', '考研', '雅思', '托福'];
+
+function chinaDayNumber(dayKey: string) {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
+function isRotationDay(dayKey: string) {
+  return chinaDayNumber(dayKey) % 2 === 0;
+}
+
+async function rotateContentPool(database: D1Database, dayKey = chinaDayKey()) {
+  if (!isRotationDay(dayKey)) return { rotated: false, count: 0, dayKey };
+  const now = Date.now();
+  let count = 0;
+  for (const difficulty of ROTATION_DIFFICULTIES) {
+    const next = await database.prepare(
+      "SELECT id FROM content_articles WHERE status = 'published' AND publish_date IS NULL AND difficulty = ? ORDER BY COALESCE(published_at, 0), created_at, id LIMIT 1",
+    ).bind(difficulty).first<{ id: string }>();
+    if (!next) continue;
+    await database.batch([
+      database.prepare("UPDATE content_articles SET publish_date = NULL, updated_at = ? WHERE status = 'published' AND publish_date IS NOT NULL AND difficulty = ?").bind(now, difficulty),
+      database.prepare("UPDATE content_articles SET status = 'published', publish_date = ?, published_at = ?, updated_at = ? WHERE id = ?").bind(dayKey, now, now, next.id),
+    ]);
+    count += 1;
+  }
+  return { rotated: count > 0, count, dayKey };
 }
 
 async function batchStatements(database: D1Database, statements: D1PreparedStatement[], size = 50) {
@@ -678,6 +812,178 @@ app.post('/api/sync/push', async (context) => {
   return context.json({ ok: true, count: statements.length });
 });
 
+app.get('/api/dictionary', async (context) => {
+  const word = normalizeDictionaryWord(context.req.query('word') || '');
+  if (!word) return context.json({ items: [] });
+  if (!context.env.DB) return context.json({ items: [], source: 'fallback' });
+  try {
+    const exact = await context.env.DB.prepare(
+      'SELECT d.id AS dictionary_id, d.name AS dictionary_name, e.headword, e.phonetic, e.part_of_speech, e.definition_en, e.definition_zh, e.example_en, e.difficulty, e.frequency_rank FROM dictionary_entries e JOIN dictionaries d ON d.id = e.dictionary_id WHERE e.normalized = ? ORDER BY d.priority ASC LIMIT 8',
+    ).bind(word).all();
+    let rows = exact.results;
+    if (!rows.length) {
+      const matched = await context.env.DB.prepare(
+        'SELECT d.id AS dictionary_id, d.name AS dictionary_name, e.headword, e.phonetic, e.part_of_speech, e.definition_en, e.definition_zh, e.example_en, e.difficulty, e.frequency_rank FROM dictionary_forms f JOIN dictionary_entries e ON e.dictionary_id = f.dictionary_id AND e.normalized = f.lemma_normalized JOIN dictionaries d ON d.id = e.dictionary_id WHERE f.normalized = ? ORDER BY d.priority ASC, e.frequency_rank ASC LIMIT 8',
+      ).bind(word).all();
+      rows = matched.results;
+    }
+    return context.json({
+      items: rows.map((row) => dictionaryItem(row as Record<string, unknown>)),
+      source: 'builtin',
+    });
+  } catch {
+    return context.json({ items: [], source: 'fallback' });
+  }
+});
+
+app.post('/api/dictionary/batch', async (context) => {
+  if (!context.env.DB) return context.json({ items: [], source: 'fallback' });
+  const parsed = DictionaryBatchSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: '批量查词参数不正确' }, 400);
+  const words = Array.from(new Set(parsed.data.words.map(normalizeDictionaryWord).filter(Boolean)));
+  if (!words.length) return context.json({ items: [], source: 'builtin' });
+  try {
+    const placeholders = words.map(() => '?').join(',');
+    const exact = await context.env.DB.prepare(
+      `SELECT e.normalized AS lookup_word, d.id AS dictionary_id, d.name AS dictionary_name, e.headword, e.phonetic, e.part_of_speech, e.definition_en, e.definition_zh, e.example_en, e.difficulty, e.frequency_rank FROM dictionary_entries e JOIN dictionaries d ON d.id = e.dictionary_id WHERE e.normalized IN (${placeholders}) ORDER BY d.priority ASC, e.frequency_rank ASC`,
+    ).bind(...words).all();
+    const exactByWord = new Map<string, Record<string, unknown>>();
+    for (const row of exact.results) {
+      const key = String(row.lookup_word);
+      if (!exactByWord.has(key)) exactByWord.set(key, row as Record<string, unknown>);
+    }
+    const missing = words.filter((word) => !exactByWord.has(word));
+    const formByWord = new Map<string, Record<string, unknown>>();
+    if (missing.length) {
+      const formPlaceholders = missing.map(() => '?').join(',');
+      const forms = await context.env.DB.prepare(
+        `SELECT f.normalized AS lookup_word, d.id AS dictionary_id, d.name AS dictionary_name, e.headword, e.phonetic, e.part_of_speech, e.definition_en, e.definition_zh, e.example_en, e.difficulty, e.frequency_rank FROM dictionary_forms f JOIN dictionary_entries e ON e.dictionary_id = f.dictionary_id AND e.normalized = f.lemma_normalized JOIN dictionaries d ON d.id = e.dictionary_id WHERE f.normalized IN (${formPlaceholders}) ORDER BY d.priority ASC, e.frequency_rank ASC`,
+      ).bind(...missing).all();
+      for (const row of forms.results) {
+        const key = String(row.lookup_word);
+        if (!formByWord.has(key)) formByWord.set(key, row as Record<string, unknown>);
+      }
+    }
+    return context.json({
+      items: words.map((word) => ({ query: word, entry: dictionaryItem(exactByWord.get(word) ?? formByWord.get(word) ?? {}) })).filter((item) => item.entry.word),
+      source: 'builtin',
+    });
+  } catch {
+    return context.json({ items: [], source: 'fallback' });
+  }
+});
+
+app.get('/api/admin/content', async (context) => {
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+  const user = await getSessionUser(context.env.DB, context.req.raw);
+  if (!user) return context.json({ error: '请先登录' }, 401);
+  if (!isAdmin(context.env, user)) return context.json({ error: '没有内容审核权限' }, 403);
+  const status = context.req.query('status') || 'candidate';
+  if (!['candidate', 'approved', 'published', 'archived'].includes(status)) return context.json({ error: '状态参数不正确' }, 400);
+  const select = 'SELECT id, title, summary, content, difficulty, topic, word_count, estimated_minutes, questions_json, source_title, source_url, license_note, status, publish_date, cover_url, created_at, updated_at, reviewed_at, published_at, ai_review_json, ai_reviewed_at, ai_review_model FROM content_articles';
+  const result = status === 'approved'
+    ? await context.env.DB.prepare(`${select} WHERE status = 'published' AND publish_date IS NULL ORDER BY difficulty, created_at, id`).all()
+    : status === 'published'
+      ? await context.env.DB.prepare(`${select} WHERE status = 'published' AND publish_date IS NOT NULL ORDER BY difficulty, created_at, id`).all()
+      : await context.env.DB.prepare(`${select} WHERE status = ? ORDER BY difficulty, created_at, id`).bind(status).all();
+  return context.json({ items: result.results.map((row) => ({
+    id: row.id, title: row.title, summary: row.summary, content: row.content, difficulty: row.difficulty,
+    topic: row.topic, wordCount: row.word_count, estimatedMinutes: row.estimated_minutes,
+    questions: parseJson(row.questions_json, []), sourceTitle: row.source_title, sourceUrl: row.source_url,
+    licenseNote: row.license_note, coverUrl: row.cover_url ?? undefined, status: status === 'approved' ? 'approved' : row.status, publishDate: row.publish_date ?? undefined,
+    createdAt: row.created_at, updatedAt: row.updated_at, reviewedAt: row.reviewed_at ?? undefined,
+    publishedAt: row.published_at ?? undefined,
+    aiReview: parseJson(row.ai_review_json, undefined), aiReviewedAt: row.ai_reviewed_at ?? undefined, aiReviewModel: row.ai_review_model ?? undefined,
+  })) });
+});
+
+app.post('/api/admin/content/:id/review', async (context) => {
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+  const user = await getSessionUser(context.env.DB, context.req.raw);
+  if (!user) return context.json({ error: '请先登录' }, 401);
+  if (!isAdmin(context.env, user)) return context.json({ error: '没有内容审核权限' }, 403);
+  const parsed = ContentReviewSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: '审核参数不正确' }, 400);
+  const now = Date.now();
+  const { action, publishDate } = parsed.data;
+  let result: D1Result<unknown>;
+  if (action === 'publish') {
+    result = await context.env.DB.prepare('UPDATE content_articles SET status = ?, publish_date = ?, reviewed_at = ?, published_at = ?, updated_at = ? WHERE id = ?')
+      .bind('published', publishDate || chinaDayKey(), now, now, now, context.req.param('id')).run();
+  } else if (action === 'approve') {
+    result = await context.env.DB.prepare("UPDATE content_articles SET status = 'published', publish_date = NULL, reviewed_at = ?, published_at = NULL, updated_at = ? WHERE id = ?")
+      .bind(now, now, context.req.param('id')).run();
+  } else {
+    result = await context.env.DB.prepare('UPDATE content_articles SET status = ?, publish_date = NULL, reviewed_at = ?, published_at = NULL, updated_at = ? WHERE id = ?')
+      .bind(action, now, now, context.req.param('id')).run();
+  }
+  if (!result.meta.changes) return context.json({ error: '文章不存在' }, 404);
+  return context.json({ ok: true, id: context.req.param('id'), status: action === 'publish' ? 'published' : action });
+});
+
+app.post('/api/admin/content/:id/ai-review', async (context) => {
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+  const user = await getSessionUser(context.env.DB, context.req.raw);
+  if (!user) return context.json({ error: '请先登录' }, 401);
+  if (!isAdmin(context.env, user)) return context.json({ error: '没有内容审核权限' }, 403);
+  const article = await context.env.DB.prepare('SELECT id, title, summary, content, difficulty, topic, questions_json, source_title, source_url FROM content_articles WHERE id = ?').bind(context.req.param('id')).first<Record<string, unknown>>();
+  if (!article) return context.json({ error: '文章不存在' }, 404);
+  try {
+    const provider = getReviewProvider(context.env);
+    const raw = await callProvider({
+      ...provider,
+      systemPrompt: 'You are a strict editorial reviewer for an English learning platform. Return valid JSON only. Do not publish anything. Check English quality, level fit, question-answer consistency, possible factual overclaims, copyright risk, and whether the source is clearly credited.',
+      userPrompt: JSON.stringify({
+        task: 'Review this candidate article and provide a recommendation for a human editor.',
+        article: { title: article.title, summary: article.summary, content: article.content, difficulty: article.difficulty, topic: article.topic, questions: parseJson(article.questions_json, []), sourceTitle: article.source_title, sourceUrl: article.source_url },
+        output: '{verdict: pass|needs_revision|reject, score: 0-100, summary: string, strengths: string[], issues: string[], factualChecks: string[]}',
+      }),
+    });
+    const review = AiReviewSchema.parse(raw.value);
+    const reviewedAt = Date.now();
+    await context.env.DB.prepare('UPDATE content_articles SET ai_review_json = ?, ai_reviewed_at = ?, ai_review_model = ?, updated_at = ? WHERE id = ?')
+      .bind(JSON.stringify(review), reviewedAt, provider.model, reviewedAt, context.req.param('id')).run();
+    return context.json({ ok: true, review, reviewedAt, model: provider.model });
+  } catch (error) {
+    return context.json({ error: error instanceof Error ? error.message : 'AI 审核失败' }, 502);
+  }
+});
+
+app.post('/api/admin/content/rotate', async (context) => {
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+  const user = await getSessionUser(context.env.DB, context.req.raw);
+  if (!user) return context.json({ error: '请先登录' }, 401);
+  if (!isAdmin(context.env, user)) return context.json({ error: '没有内容审核权限' }, 403);
+  return context.json(await rotateContentPool(context.env.DB));
+});
+
+app.get('/api/favorites', async (context) => {
+  if (!context.env.DB) return context.json({ items: [], source: 'fallback' });
+  const user = await getSessionUser(context.env.DB, context.req.raw);
+  if (!user) return context.json({ error: '请先登录' }, 401);
+  const result = await context.env.DB.prepare(
+    'SELECT c.id, c.title, c.summary, c.content, c.difficulty, c.topic, c.questions_json, c.word_count, c.estimated_minutes, c.source_title, c.source_url, c.cover_url, c.publish_date, c.created_at, c.updated_at, f.created_at AS favorited_at FROM user_content_favorites f JOIN content_articles c ON c.id = f.article_id WHERE f.user_id = ? ORDER BY f.created_at DESC',
+  ).bind(user.id).all();
+  return context.json({ items: result.results.map((row) => contentItem(row as Record<string, unknown>, true)), source: 'd1' });
+});
+
+app.post('/api/content/:id/favorite', async (context) => {
+  if (!context.env.DB) return context.json({ error: '用户服务尚未配置' }, 503);
+  const user = await getSessionUser(context.env.DB, context.req.raw);
+  if (!user) return context.json({ error: '请先登录' }, 401);
+  const articleId = context.req.param('id');
+  const article = await context.env.DB.prepare('SELECT id FROM content_articles WHERE id = ?').bind(articleId).first();
+  if (!article) return context.json({ error: '文章不存在' }, 404);
+  const body = await context.req.json().catch(() => null) as { favorite?: unknown } | null;
+  if (typeof body?.favorite !== 'boolean') return context.json({ error: '收藏参数不正确' }, 400);
+  if (body.favorite) {
+    await context.env.DB.prepare('INSERT OR IGNORE INTO user_content_favorites (user_id, article_id, created_at) VALUES (?, ?, ?)').bind(user.id, articleId, Date.now()).run();
+  } else {
+    await context.env.DB.prepare('DELETE FROM user_content_favorites WHERE user_id = ? AND article_id = ?').bind(user.id, articleId).run();
+  }
+  return context.json({ ok: true, favorite: body.favorite });
+});
+
 /* app.post('/api/test-provider', async (context) => {
   const key = context.req.header('x-provider-key');
   if (!key) return context.json({ error: '缺少 API Key' }, 400);
@@ -700,6 +1006,20 @@ app.get('/api/daily', async (context) => {
   if (!context.env.DB) return context.json({ items: [], source: 'fallback' });
   const difficulty = context.req.query('difficulty');
   const date = context.req.query('date') || chinaDayKey();
+  const sessionUser = await getSessionUser(context.env.DB, context.req.raw);
+  try {
+    const contentResult = await context.env.DB.prepare(
+      "SELECT c.id, c.title, c.summary, c.content, c.difficulty, c.topic, c.word_count, c.estimated_minutes, c.questions_json, c.cover_url, c.publish_date, c.created_at, c.updated_at, c.source_id, c.source_title, c.source_url, f.article_id AS favorite_article_id FROM content_articles c LEFT JOIN user_content_favorites f ON f.article_id = c.id AND f.user_id = ? WHERE c.status = 'published' AND c.publish_date = ? AND (? IS NULL OR c.difficulty = ?) ORDER BY c.difficulty",
+    ).bind(sessionUser?.id ?? '', date, difficulty || null, difficulty || null).all();
+    if (contentResult.results.length) {
+      return context.json({
+        items: contentResult.results.map((row) => contentItem(row as Record<string, unknown>, Boolean(row.favorite_article_id))),
+        source: 'content_library',
+      });
+    }
+  } catch {
+    // Older local databases may not have migration 0005 yet; use the legacy table below.
+  }
   const query = context.env.DB.prepare(
     'SELECT * FROM daily_articles WHERE publish_date = ? AND (? IS NULL OR difficulty = ?) ORDER BY difficulty',
   ).bind(date, difficulty || null, difficulty || null);
@@ -757,4 +1077,13 @@ app.post('/api/generate', async (context) => {
 
 app.notFound((context) => context.json({ error: 'not found' }, 404));
 
-export default app;
+async function scheduled(event: ScheduledController, env: Env) {
+  if (!env.DB) return;
+  const dayKey = chinaDayKey(event.scheduledTime);
+  await rotateContentPool(env.DB, dayKey);
+}
+
+export default {
+  fetch: app.fetch,
+  scheduled,
+};

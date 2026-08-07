@@ -13,6 +13,10 @@ database_name = "lexiscene"
 database_id = "5ee7a76f-42e0-479d-909a-21ffa41b58f1"
 migrations_dir = "migrations"
 
+[triggers]
+# Cloudflare Cron uses UTC. 23:00 UTC is 07:00 in Asia/Shanghai.
+crons = ["0 23 * * *"]
+
 # 限流用 KV
 # [[kv_namespaces]]
 # binding = "RL"

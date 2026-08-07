@@ -1,5 +1,23 @@
 # LexiScene 账号与邮箱验证配置
 
+## 内容库与词典配置补充
+
+账号配置之外，当前版本新增内置词典和文章内容库。首次配置或换环境时，在 Worker 目录执行：
+
+```powershell
+npx wrangler d1 migrations apply lexiscene --local
+```
+
+准备 `tmp\ecdict.csv` 后，从项目根目录执行：
+
+```powershell
+node worker\scripts\seed-content.mjs --ecdict-file=tmp\ecdict.csv
+```
+
+远程环境先应用迁移，再执行 `--remote` 导入。脚本使用稳定 ID 和幂等写入，可以重复执行；不要提交 ECDICT 下载文件、`.env`、`.dev.vars` 或 `.wrangler`。
+
+内容导入后默认为 `candidate`。审核通过后才设置 `content_articles.status = 'published'` 和 `publish_date`，这样 `/api/daily` 才会返回文章。
+
 > 最后更新：2026-08-06
 
 当前 Web 应用使用 Cloudflare Worker 管理账号、Cookie 会话、邮箱验证码和 D1 数据同步。
@@ -30,7 +48,11 @@ TURNSTILE_SECRET_KEY=
 RESEND_API_KEY=
 EMAIL_FROM=
 FRONTEND_ORIGIN=http://127.0.0.1:5173
+ADMIN_EMAILS=your_admin_email@example.com
 
+DEEPSEEK_GENERATION_API_KEY=
+DEEPSEEK_REVIEW_API_KEY=
+# 旧配置兼容项；新环境请使用上面两把 Key
 DEEPSEEK_API_KEY=
 DASHSCOPE_API_KEY=
 ARK_API_KEY=
@@ -38,6 +60,10 @@ DEEPSEEK_MODEL=deepseek-chat
 QWEN_MODEL=qwen-plus
 DOUBAO_MODEL=
 ```
+
+`ADMIN_EMAILS` 使用逗号分隔管理员邮箱。该邮箱登录后可以访问 `/#/admin/content` 审核候选文章；后端会再次校验，普通用户即使知道链接也无法读取或发布文章。
+
+DeepSeek 使用两把独立 Key：`DEEPSEEK_GENERATION_API_KEY` 只用于用户生成文章，`DEEPSEEK_REVIEW_API_KEY` 只用于管理员触发 AI 预审。两把 Key 都只放在 Worker 的 `.dev.vars` 或 Cloudflare Worker Secret 中，不能放在前端环境变量。
 
 启动命令：
 

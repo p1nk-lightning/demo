@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/useAuthStore';
 import { setLocalOwnerId } from '@/lib/localScope';
 import { useSyncStore } from '@/lib/sync';
 import { useAppStore } from '@/store/useAppStore';
+import { getVocabularyItems, listVocabularyLists } from '@/lib/db';
 
 const HomePage = lazy(() => import('@/pages/HomePage').then((module) => ({ default: module.HomePage })));
 const ReadingPage = lazy(() => import('@/pages/ReadingPage').then((module) => ({ default: module.ReadingPage })));
@@ -25,6 +26,15 @@ function PageLoader() {
   );
 }
 
+function AdminRoute() {
+  const user = useAuthStore((state) => state.user);
+  const status = useAuthStore((state) => state.status);
+  if (status === 'loading') return <PageLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  if (!user.isAdmin) return <Navigate to="/" replace />;
+  return <AdminContentPage />;
+}
+
 export function App() {
   const hydrateAuth = useAuthStore((state) => state.hydrate);
   const user = useAuthStore((state) => state.user);
@@ -32,6 +42,7 @@ export function App() {
   const startForUser = useSyncStore((state) => state.startForUser);
   const resetSync = useSyncStore((state) => state.reset);
   const resetSessionState = useAppStore((state) => state.resetSessionState);
+  const setWords = useAppStore((state) => state.setWords);
 
   useEffect(() => {
     void hydrateAuth();
@@ -40,15 +51,23 @@ export function App() {
   useEffect(() => {
     resetSessionState();
     if (authStatus === 'authenticated' && user) {
-      void startForUser(user.id);
+      let active = true;
+      void startForUser(user.id).then(async () => {
+        const lists = await listVocabularyLists();
+        const items = lists[0] ? await getVocabularyItems(lists[0].id) : [];
+        if (active) setWords(items);
+      });
+      return () => {
+        active = false;
+      };
     } else if (authStatus === 'unauthenticated' || authStatus === 'unavailable') {
       setLocalOwnerId(null);
       resetSync();
     }
-  }, [authStatus, resetSessionState, resetSync, startForUser, user]);
+  }, [authStatus, resetSessionState, resetSync, setWords, startForUser, user]);
 
   return (
-    <HashRouter>
+    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <ToastHost />
       <Suspense fallback={<PageLoader />}>
         <Routes>
@@ -62,7 +81,7 @@ export function App() {
             <Route path="/reading/:articleId" element={<ReadingPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/favorites" element={<FavoritesPage />} />
-            <Route path="/admin/content" element={<AdminContentPage />} />
+            <Route path="/admin/content" element={<AdminRoute />} />
             <Route path="/vocab" element={<Navigate to="/library" replace />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

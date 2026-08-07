@@ -70,6 +70,26 @@ export async function listAllArticles(): Promise<Article[]> {
     .sort((left, right) => right.createdAt - left.createdAt));
 }
 
+/** Hide article history and its answer record locally, then propagate tombstones on the next sync. */
+export async function deleteReadingRecords(articleIds: string[]) {
+  const ids = Array.from(new Set(articleIds));
+  if (!ids.length) return;
+  const deletedAt = Date.now();
+  await db.transaction('rw', db.articleRecords, db.progressRecords, async () => {
+    for (const articleId of ids) {
+      const articles = await db.articleRecords.where('id').equals(articleId).toArray();
+      await Promise.all(articles.filter((article) => isOwnedBy(article) && !article.deletedAt).map((article) =>
+        db.articleRecords.update(article.localId, { deletedAt, updatedAt: deletedAt }),
+      ));
+      const progressRecords = await db.progressRecords.where('articleId').equals(articleId).toArray();
+      await Promise.all(progressRecords.filter((record) => isOwnedBy(record) && !record.deletedAt).map((record) =>
+        db.progressRecords.update(record.id, { deletedAt, updatedAt: deletedAt }),
+      ));
+    }
+  });
+  scheduleSync(getLocalOwnerId());
+}
+
 // ---- 进度 ----
 
 export async function saveProgress(progress: UserProgress) {

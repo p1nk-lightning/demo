@@ -32,7 +32,7 @@ function readCachedUser(): AuthUser | null {
   try {
     const value = JSON.parse(localStorage.getItem(AUTH_CACHE_KEY) ?? 'null') as Partial<AuthUser> | null;
     return value && typeof value.id === 'string' && typeof value.email === 'string'
-      ? value as AuthUser
+      ? { ...value, isAdmin: Boolean(value.isAdmin) } as AuthUser
       : null;
   } catch {
     return null;

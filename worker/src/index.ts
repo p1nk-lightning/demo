@@ -133,11 +133,11 @@ const AiReviewSchema = z.object({
 });
 
 const DIFFICULTY_PROMPT: Record<Difficulty, string> = {
-  CET4: 'CET-4 level, common vocabulary, direct sentences, familiar daily topics.',
-  CET6: 'CET-6 level, moderate complexity, news, science or social topics.',
-  考研: 'Chinese postgraduate entrance exam level, academic tone and complex syntax.',
-  雅思: 'IELTS Academic level, neutral formal tone and coherent argumentation.',
-  托福: 'TOEFL level, university lecture or academic reading style.',
+  CET4: 'CET-4 practice level: mostly high-frequency college vocabulary, direct argument, concrete context, and short readable sentences.',
+  CET6: 'CET-6 practice level: moderate news, science, or social topics, controlled abstraction, comparison, and readable varied sentences.',
+  考研: 'Chinese postgraduate entrance-exam practice level: academic argument, thesis and evidence, discourse markers, inference, and carefully controlled embedded clauses.',
+  雅思: 'IELTS Academic reading practice level: neutral formal tone, information-rich paragraphs, precise references, cohesion, and factual detail.',
+  托福: 'TOEFL academic reading practice level: university-style explanation, academic topic, cause-and-effect, examples, rhetorical purpose, and answerable inference.',
 };
 
 const app = new Hono<{ Bindings: Env }>();
@@ -246,12 +246,13 @@ function clearSessionCookie(request: Request) {
   return sessionCookie(request, '', 0);
 }
 
-function publicUser(user: AuthUser) {
+function publicUser(env: Env, user: AuthUser) {
   return {
     id: user.id,
     email: user.email,
     emailVerified: user.email_verified_at !== null,
     createdAt: user.created_at,
+    isAdmin: isAdmin(env, user),
   };
 }
 
@@ -665,7 +666,7 @@ app.post('/api/auth/register', async (context) => {
   }
   context.header('Set-Cookie', sessionCookie(context.req.raw, sessionToken, SESSION_TTL_MS / 1000));
   context.header('Cache-Control', 'no-store');
-  return context.json({ user: publicUser(user), verificationEmailSent }, 201);
+  return context.json({ user: publicUser(context.env, user), verificationEmailSent }, 201);
 });
 
 app.post('/api/auth/login', async (context) => {
@@ -688,7 +689,7 @@ app.post('/api/auth/login', async (context) => {
   const sessionToken = await createSession(context.env.DB, user.id);
   context.header('Set-Cookie', sessionCookie(context.req.raw, sessionToken, SESSION_TTL_MS / 1000));
   context.header('Cache-Control', 'no-store');
-  return context.json({ user: publicUser(user) });
+  return context.json({ user: publicUser(context.env, user) });
 });
 
 app.post('/api/auth/logout', async (context) => {
@@ -704,7 +705,7 @@ app.get('/api/auth/me', async (context) => {
   const user = await getSessionUser(context.env.DB, context.req.raw);
   context.header('Cache-Control', 'no-store');
   if (!user) return context.json({ error: '未登录' }, 401);
-  return context.json({ user: publicUser(user) });
+  return context.json({ user: publicUser(context.env, user) });
 });
 
 app.post('/api/auth/verify-email', async (context) => {
@@ -908,8 +909,16 @@ app.post('/api/admin/content/:id/review', async (context) => {
   const { action, publishDate } = parsed.data;
   let result: D1Result<unknown>;
   if (action === 'publish') {
-    result = await context.env.DB.prepare('UPDATE content_articles SET status = ?, publish_date = ?, reviewed_at = ?, published_at = ?, updated_at = ? WHERE id = ?')
-      .bind('published', publishDate || chinaDayKey(), now, now, now, context.req.param('id')).run();
+    const article = await context.env.DB.prepare('SELECT difficulty FROM content_articles WHERE id = ?').bind(context.req.param('id')).first<{ difficulty: Difficulty }>();
+    if (!article) return context.json({ error: '文章不存在' }, 404);
+    const targetDate = publishDate || chinaDayKey();
+    const updates = await context.env.DB.batch([
+      context.env.DB.prepare('UPDATE content_articles SET publish_date = NULL, updated_at = ? WHERE status = ? AND difficulty = ? AND publish_date = ? AND id != ?')
+        .bind(now, 'published', article.difficulty, targetDate, context.req.param('id')),
+      context.env.DB.prepare('UPDATE content_articles SET status = ?, publish_date = ?, reviewed_at = ?, published_at = ?, updated_at = ? WHERE id = ?')
+        .bind('published', targetDate, now, now, now, context.req.param('id')),
+    ]);
+    result = updates[1];
   } else if (action === 'approve') {
     result = await context.env.DB.prepare("UPDATE content_articles SET status = 'published', publish_date = NULL, reviewed_at = ?, published_at = NULL, updated_at = ? WHERE id = ?")
       .bind(now, now, context.req.param('id')).run();

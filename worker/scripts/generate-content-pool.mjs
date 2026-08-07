@@ -7,6 +7,7 @@ const workerRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const databaseName = 'lexiscene';
 const remote = process.argv.includes('--remote');
 const replaceCandidates = process.argv.includes('--replace-candidates');
+const replaceRange = process.argv.includes('--replace-range');
 const count = Math.max(1, Math.min(200, Number(process.argv.find((value) => value.startsWith('--count='))?.slice(8)) || 100));
 const offset = Math.max(0, Number(process.argv.find((value) => value.startsWith('--offset='))?.slice(9)) || 0);
 const concurrency = Math.max(1, Math.min(5, Number(process.argv.find((value) => value.startsWith('--concurrency='))?.slice(14)) || 3));
@@ -21,6 +22,28 @@ const fallbackCovers = {
 };
 const difficulties = ['CET4', 'CET6', '考研', '雅思', '托福'];
 const topics = ['科技', '文化', '教育', '生活', '商业', '自然'];
+const difficultyProfiles = {
+  CET4: {
+    minWords: 400, maxWords: 500, minSentenceWords: 12, maxSentenceWords: 18, questionCount: 4,
+    prompt: 'CET-4 practice level. Use mostly high-frequency college vocabulary from the common 4,500-word range. Keep the topic concrete and the argument explicit. Prefer active voice, direct transitions, and one main clause per sentence; allow only a few contextual challenge words.',
+  },
+  CET6: {
+    minWords: 500, maxWords: 620, minSentenceWords: 16, maxSentenceWords: 22, questionCount: 4,
+    prompt: 'CET-6 practice level. Use news, science, or social topics and vocabulary around the common 5,500-word range. Include controlled abstraction, comparison, and inference, but define less familiar terms from context. Use varied but readable sentence structures.',
+  },
+  考研: {
+    minWords: 600, maxWords: 720, minSentenceWords: 19, maxSentenceWords: 26, questionCount: 5,
+    prompt: 'Chinese postgraduate entrance-exam reading practice level. Use an academic social-science or science argument with a clear thesis, evidence, contrast, and inference. Use denser discourse markers and occasional embedded clauses, while keeping every claim traceable to the source lead.',
+  },
+  雅思: {
+    minWords: 700, maxWords: 850, minSentenceWords: 18, maxSentenceWords: 26, questionCount: 5,
+    prompt: 'IELTS Academic reading practice level. Write a neutral, formal, information-rich text with paragraph-level cohesion, precise reference words, and a mix of factual detail and author purpose. Do not use obscure vocabulary merely to sound difficult.',
+  },
+  托福: {
+    minWords: 750, maxWords: 900, minSentenceWords: 20, maxSentenceWords: 28, questionCount: 5,
+    prompt: 'TOEFL academic reading practice level. Write a university-style explanatory passage with an academic topic, cause-and-effect reasoning, examples, and clear rhetorical purpose. Use complex but transparent syntax and make inference questions answerable from the text.',
+  },
+};
 const sourceConfigs = [
   { id: 'npr', name: 'NPR', feed: 'https://feeds.npr.org/1001/rss.xml', home: 'https://www.npr.org/' },
   { id: 'npr', name: 'NPR', feed: 'https://feeds.npr.org/1003/rss.xml', home: 'https://www.npr.org/' },
@@ -60,9 +83,15 @@ function parseRss(xml, source) {
     return { source, title: tag(block, 'title'), url: tag(block, 'link'), summary: tag(block, 'description') || tag(block, 'content:encoded') };
   }).filter((item) => item.title && item.url.startsWith('http'));
 }
-function targetWords(index) { return 400 + ((index * 137 + 71) % 601); }
-function difficultyPrompt(difficulty) { return { CET4: 'CET-4 level, direct but natural prose.', CET6: 'CET-6 level, moderate complexity and clear explanation.', 考研: 'Chinese postgraduate entrance exam level, academic but readable prose.', 雅思: 'IELTS Academic level, coherent formal argumentation.', 托福: 'TOEFL level, academic reading style with more complex syntax.' }[difficulty]; }
+function targetWords(index, difficulty) {
+  const profile = difficultyProfiles[difficulty];
+  return profile.minWords + ((index * 137 + 71) % (profile.maxWords - profile.minWords + 1));
+}
 function wordCount(text) { return text.trim().split(/\s+/).filter(Boolean).length; }
+function averageSentenceLength(text) {
+  const sentenceCount = Math.max(1, (text.match(/[.!?]+(?:\s|$)/g) || []).length);
+  return wordCount(text) / sentenceCount;
+}
 
 function execute(sqlText, label) {
   const tempDir = join(workerRoot, '..', 'tmp');
@@ -89,14 +118,15 @@ async function collectMaterials() {
 async function generate(material, index, key, model) {
   const difficulty = difficulties[index % difficulties.length];
   const topic = topics[(index * 5 + 1) % topics.length];
-  const desiredWords = targetWords(index);
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    console.log(`Generating ${index + 1}: attempt ${attempt + 1}, target ${desiredWords} words`);
+  const profile = difficultyProfiles[difficulty];
+  const desiredWords = targetWords(index, difficulty);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    console.log(`Generating ${index + 1}: attempt ${attempt + 1}, ${difficulty}, target ${desiredWords} words`);
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       signal: AbortSignal.timeout(60_000),
       body: JSON.stringify({ model, response_format: { type: 'json_object' }, temperature: 0.55, max_tokens: 2400, thinking: { type: 'disabled' }, messages: [
-        { role: 'system', content: `Create an original English reading article for Chinese learners. ${difficultyPrompt(difficulty)} Write ${desiredWords} English words (strictly between 400 and 1000 words). Use the source only as factual context; never copy sentences. Do not invent facts beyond the lead. Return JSON only: {title, summary, article, questions:[{question,options:[4 strings],answer:0|1|2|3}]}. Include exactly ${desiredWords < 650 ? 3 : 4} Chinese multiple-choice questions.` },
+        { role: 'system', content: `Create an original English reading article for Chinese learners. ${profile.prompt} Write ${desiredWords} English words. The article must contain ${profile.minWords}-${profile.maxWords} English words and average ${profile.minSentenceWords}-${profile.maxSentenceWords} words per sentence. Use the source only as factual context; never copy sentences. Do not invent facts beyond the lead. Return JSON only: {title, summary, article, questions:[{question,options:[4 strings],answer:0|1|2|3}]}. Include exactly ${profile.questionCount} Chinese multiple-choice questions that test main idea, detail, vocabulary in context, inference, or author purpose as appropriate.` },
         { role: 'user', content: JSON.stringify({ source: material.source.name, sourceTitle: material.title, sourceSummary: material.summary, sourceUrl: material.url, learningTopic: topic }) },
       ] }),
     });
@@ -112,8 +142,9 @@ async function generate(material, index, key, model) {
       continue;
     }
     const words = wordCount(article.article || '');
-    console.log(`Generated ${index + 1}: received ${words} words`);
-    if (typeof article.title === 'string' && typeof article.summary === 'string' && Array.isArray(article.questions) && words >= 400 && words <= 1000) {
+    const sentenceLength = averageSentenceLength(article.article || '');
+    console.log(`Generated ${index + 1}: received ${words} words, ${sentenceLength.toFixed(1)} words per sentence`);
+    if (typeof article.title === 'string' && typeof article.summary === 'string' && Array.isArray(article.questions) && article.questions.length === profile.questionCount && words >= profile.minWords && words <= profile.maxWords && sentenceLength >= profile.minSentenceWords && sentenceLength <= profile.maxSentenceWords) {
       return { id: `content-v4-${String(index + 1).padStart(3, '0')}`, title: article.title, summary: article.summary, content: article.article, questions: article.questions, difficulty, topic, sourceId: material.source.id, sourceTitle: material.title, sourceUrl: material.url, coverUrl: fallbackCovers[topic], wordCount: words, estimatedMinutes: Math.max(3, Math.ceil(words / 150)) };
     }
   }
@@ -127,7 +158,7 @@ function sourceSql() {
 }
 function articleSql(items) {
   const now = Date.now();
-  return items.map((item) => `INSERT INTO content_articles (id,title,summary,content,difficulty,topic,word_count,estimated_minutes,questions_json,source_id,source_title,source_url,source_published_at,license_note,status,publish_date,cover_url,created_at,updated_at,reviewed_at,published_at) VALUES (${sql(item.id)},${sql(item.title)},${sql(item.summary)},${sql(item.content)},${sql(item.difficulty)},${sql(item.topic)},${item.wordCount},${item.estimatedMinutes},${sql(JSON.stringify(item.questions))},${sql(item.sourceId)},${sql(item.sourceTitle)},${sql(item.sourceUrl)},NULL,${sql(sourceNote)},'candidate',NULL,${sql(item.coverUrl)},${now},${now},NULL,NULL);`).join('\n');
+  return items.map((item) => `INSERT INTO content_articles (id,title,summary,content,difficulty,topic,word_count,estimated_minutes,questions_json,source_id,source_title,source_url,source_published_at,license_note,status,publish_date,cover_url,created_at,updated_at,reviewed_at,published_at) VALUES (${sql(item.id)},${sql(item.title)},${sql(item.summary)},${sql(item.content)},${sql(item.difficulty)},${sql(item.topic)},${item.wordCount},${item.estimatedMinutes},${sql(JSON.stringify(item.questions))},${sql(item.sourceId)},${sql(item.sourceTitle)},${sql(item.sourceUrl)},NULL,${sql(sourceNote)},'candidate',NULL,${sql(item.coverUrl)},${now},${now},NULL,NULL) ON CONFLICT(id) DO UPDATE SET title=excluded.title,summary=excluded.summary,content=excluded.content,difficulty=excluded.difficulty,topic=excluded.topic,word_count=excluded.word_count,estimated_minutes=excluded.estimated_minutes,questions_json=excluded.questions_json,source_id=excluded.source_id,source_title=excluded.source_title,source_url=excluded.source_url,license_note=excluded.license_note,status='candidate',publish_date=NULL,cover_url=excluded.cover_url,updated_at=excluded.updated_at,reviewed_at=NULL,published_at=NULL WHERE content_articles.status = 'candidate';`).join('\n');
 }
 
 async function main() {
@@ -136,18 +167,31 @@ async function main() {
   if (!key) throw new Error('Configure DEEPSEEK_GENERATION_API_KEY in worker/.dev.vars first.');
   const materials = await collectMaterials();
   execute(sourceSql(), 'content-sources');
-  if (replaceCandidates) execute("DELETE FROM content_articles WHERE status = 'candidate';", 'clear-candidates');
   const results = new Array(materials.length);
+  const failures = [];
   let cursor = 0;
   await Promise.all(Array.from({ length: concurrency }, async () => {
     while (cursor < materials.length) {
       const index = cursor++;
-      results[index] = await generate(materials[index], index + offset, key, model);
-      console.log(`Generated ${index + 1} / ${materials.length}: ${results[index].wordCount} words`);
+      try {
+        results[index] = await generate(materials[index], index + offset, key, model);
+        console.log(`Generated ${index + 1} / ${materials.length}: ${results[index].wordCount} words`);
+      } catch (error) {
+        failures.push({ index: index + offset, title: materials[index].title, error: error instanceof Error ? error.message : String(error) });
+        console.error(`Failed ${index + 1} / ${materials.length}: ${materials[index].title}`);
+        console.error(error instanceof Error ? error.message : error);
+      }
     }
   }));
-  for (let index = 0; index < results.length; index += 5) execute(articleSql(results.slice(index, index + 5)), `content-v4-${index}`);
-  console.log(`Done: imported ${results.length} candidate articles at offset ${offset}. Mode: ${remote ? 'remote' : 'local'}.`);
+  const successful = results.filter(Boolean);
+  for (let index = 0; index < successful.length; index += 5) execute(articleSql(successful.slice(index, index + 5)), `content-v4-${offset}-${index}`);
+  // Keep old candidates until all new rows have been written successfully.
+  if (replaceCandidates && failures.length === 0) execute(`DELETE FROM content_articles WHERE status = 'candidate' AND id NOT IN (${results.map((item) => sql(item.id)).join(',')});`, 'clear-candidates');
+  console.log(`Done: imported ${successful.length}/${results.length} candidate articles at offset ${offset}. Mode: ${remote ? 'remote' : 'local'}.`);
+  if (failures.length) {
+    console.error(`Retry these offsets in the next batch: ${failures.map((failure) => `${failure.index + 1} (${failure.title})`).join(', ')}`);
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => { console.error(error); process.exitCode = 1; });

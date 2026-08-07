@@ -5,6 +5,7 @@ export interface AuthUser {
   email: string;
   emailVerified: boolean;
   createdAt: number;
+  isAdmin: boolean;
 }
 
 interface AuthResponse {

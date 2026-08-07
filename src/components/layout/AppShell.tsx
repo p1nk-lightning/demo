@@ -6,6 +6,7 @@ import {
   LibraryBig,
   LogIn,
   LogOut,
+  ShieldCheck,
   Star,
   UserRound,
 } from 'lucide-react';
@@ -19,6 +20,8 @@ const NAV_ITEMS = [
   { to: '/favorites', label: '我的收藏', icon: Star, end: false },
 ] as const;
 
+const ADMIN_NAV_ITEM = { to: '/admin/content', label: '内容审核', icon: ShieldCheck, end: false } as const;
+
 export function AppShell() {
   const location = useLocation();
   const user = useAuthStore((state) => state.user);
@@ -30,6 +33,8 @@ export function AppShell() {
   const mergeLegacyData = useSyncStore((state) => state.mergeLegacyData);
   const dismissMerge = useSyncStore((state) => state.dismissMerge);
   const dataRevision = useSyncStore((state) => state.dataRevision);
+  const navItems = user?.isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  const isAdminPage = location.pathname.startsWith('/admin/');
   const syncDotClass = syncStatus === 'syncing'
     ? 'bg-amber-400'
     : syncStatus === 'error'
@@ -64,7 +69,10 @@ export function AppShell() {
               <BookOpen size={19} strokeWidth={2.2} />
             </span>
             <span>
-              <span className="block text-lg font-bold leading-none">词境</span>
+              <span className="flex items-center gap-2 text-lg font-bold leading-none">
+                词境
+                {isAdminPage && <span className="rounded-full bg-ink-900 px-2 py-1 text-[10px] font-semibold text-white">审核后台</span>}
+              </span>
               <span className="mt-1 block text-[10px] font-semibold uppercase text-ink-400">
                 LexiScene
               </span>
@@ -72,7 +80,7 @@ export function AppShell() {
           </NavLink>
 
           <nav className="hidden items-center gap-1 md:flex" aria-label="主导航">
-            {NAV_ITEMS.map(({ to, label, end }) => (
+            {navItems.map(({ to, label, end }) => (
               <NavLink
                 key={to}
                 to={to}
@@ -96,6 +104,7 @@ export function AppShell() {
                 <span className="hidden max-w-[180px] items-center gap-2 text-sm text-ink-600 sm:flex" title={user.email}>
                   <UserRound size={16} className="shrink-0 text-brand-600" />
                   <span className="truncate">{user.email}</span>
+                  {user.isAdmin && <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">审核员</span>}
                 </span>
                 <button type="button" className="icon-button h-9 w-9" onClick={() => void handleLogout()} title="退出登录" aria-label="退出登录">
                   <LogOut size={17} />
@@ -134,8 +143,8 @@ export function AppShell() {
         className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-200 bg-white/95 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-2 backdrop-blur md:hidden"
         aria-label="移动端导航"
       >
-        <div className="grid grid-cols-4">
-          {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+        <div className="grid" style={{ gridTemplateColumns: `repeat(${navItems.length}, minmax(0, 1fr))` }}>
+          {navItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}

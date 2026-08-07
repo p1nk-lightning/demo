@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Minus, Plus, Star } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Minus, Plus, Star, Trash2 } from 'lucide-react';
 import { ArticleView } from '@/components/ArticleView';
 import { QuestionCard } from '@/components/QuestionCard';
 import { useAppStore, buildProgress, computeScore } from '@/store/useAppStore';
-import { getArticle, getProgress, saveProgress } from '@/lib/storage';
+import { deleteReadingRecords, getArticle, getProgress, saveProgress } from '@/lib/storage';
 import { Badge, Button, Card } from '@/components/ui';
 import { setArticleFavorite } from '@/lib/content';
 import { useAuthStore } from '@/store/useAuthStore';
@@ -46,6 +46,8 @@ export function ReadingPage() {
   const [submitting, setSubmitting] = useState(false);
   const [favorite, setFavorite] = useState(false);
   const [favoriteSaving, setFavoriteSaving] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingRecord, setDeletingRecord] = useState(false);
 
   useEffect(() => {
     if (!articleId) return;
@@ -79,10 +81,13 @@ export function ReadingPage() {
   }
 
   async function toggleFavorite() {
-    if (!article?.contentId) return;
     if (!user) {
       toast('请先登录后再收藏文章', 'info');
       navigate('/login');
+      return;
+    }
+    if (!article?.contentId) {
+      toast('本地示例文章暂不支持云端收藏', 'info');
       return;
     }
     const next = !favorite;
@@ -95,6 +100,18 @@ export function ReadingPage() {
       toast(cause instanceof Error ? cause.message : '收藏操作失败', 'error');
     } finally {
       setFavoriteSaving(false);
+    }
+  }
+
+  async function deleteRecord() {
+    if (!article) return;
+    setDeletingRecord(true);
+    try {
+      await deleteReadingRecords([article.id]);
+      toast('阅读记录已删除', 'success');
+      navigate('/history');
+    } finally {
+      setDeletingRecord(false);
     }
   }
 
@@ -117,7 +134,7 @@ export function ReadingPage() {
     <main className="mx-auto max-w-6xl px-5 py-7 lg:px-8 lg:py-10">
       <button onClick={() => navigate('/')} title="返回首页" className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-ink-500 hover:text-ink-900"><ArrowLeft size={17} />返回首页</button>
       <header className="max-w-5xl border-b border-ink-200 pb-6">
-        <div className="flex flex-wrap items-center gap-2"><Badge variant="brand">{article.difficulty}</Badge>{article.topic && <Badge>{article.topic}</Badge>}{article.sourceTitle && <Badge>{article.sourceTitle}</Badge>}<span className="text-xs text-ink-400">{wordCount} 词</span><span className="text-xs text-ink-400">约 {readMinutes} 分钟</span><span className="text-xs text-ink-400">{displayDate}</span>{article.contentId && <button type="button" onClick={() => void toggleFavorite()} disabled={favoriteSaving} className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold ${favorite ? 'border-amber-200 bg-amber-50 text-amber-700' : 'border-ink-200 bg-white text-ink-500 hover:border-brand-200 hover:text-brand-700'}`}><Star size={14} fill={favorite ? 'currentColor' : 'none'} />{favorite ? '已收藏' : '收藏'}</button>}</div>
+        <div className="flex flex-wrap items-center gap-2"><Badge variant="brand">{article.difficulty}</Badge>{article.topic && <Badge>{article.topic}</Badge>}{article.sourceTitle && <Badge>{article.sourceTitle}</Badge>}<span className="text-xs text-ink-400">{wordCount} 词</span><span className="text-xs text-ink-400">约 {readMinutes} 分钟</span><span className="text-xs text-ink-400">{displayDate}</span><button type="button" onClick={() => void toggleFavorite()} disabled={favoriteSaving} title={favorite ? '取消收藏' : '收藏文章'} aria-label={favorite ? '取消收藏' : '收藏文章'} className={`icon-button h-8 w-8 ${favorite ? 'border-amber-300 bg-amber-50 text-amber-600' : 'border-ink-200 bg-white text-ink-500 hover:border-amber-300 hover:text-amber-600'}`}><Star size={16} fill={favorite ? 'currentColor' : 'none'} /></button><button type="button" onClick={() => setDeleteDialogOpen(true)} title="删除阅读记录" aria-label="删除阅读记录" className="icon-button h-8 w-8 border-ink-200 bg-white text-ink-400 hover:border-red-200 hover:text-red-600"><Trash2 size={16} /></button></div>
         <h1 className="mt-4 font-display text-3xl font-semibold leading-tight text-ink-950 sm:text-4xl">{article.title}</h1>
         {article.summary && <p className="mt-3 max-w-4xl text-base leading-7 text-ink-600">{article.summary}</p>}
       </header>
@@ -140,6 +157,7 @@ export function ReadingPage() {
       </section>
       <p className="mt-6 text-center text-xs text-ink-400">点击正文中的任意单词查看释义。绿色表示已掌握词，蓝色表示生词。</p>
       <style>{`.article-prose { font-size: ${fontSize}px; }`}</style>
+      {deleteDialogOpen && <div className="fixed inset-0 z-50 grid place-items-center bg-ink-950/40 px-5" role="presentation" onMouseDown={() => !deletingRecord && setDeleteDialogOpen(false)}><section role="dialog" aria-modal="true" aria-labelledby="reading-delete-title" className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl" onMouseDown={(event) => event.stopPropagation()}><div className="flex items-start gap-3"><div className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-red-50 text-red-600"><Trash2 size={19} /></div><div><h2 id="reading-delete-title" className="text-lg font-bold text-ink-950">删除这条阅读记录？</h2><p className="mt-2 text-sm leading-6 text-ink-500">文章、答题结果和本地记录会从当前账号中删除，并在同步时更新云端。</p></div></div><div className="mt-6 flex justify-end gap-2"><button type="button" disabled={deletingRecord} onClick={() => setDeleteDialogOpen(false)} className="inline-flex h-10 items-center rounded-full border border-ink-200 px-4 text-sm font-semibold text-ink-600">取消</button><button type="button" disabled={deletingRecord} onClick={() => void deleteRecord()} className="inline-flex h-10 items-center gap-2 rounded-full bg-red-600 px-4 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-60"><Trash2 size={15} />{deletingRecord ? '正在删除...' : '确认删除'}</button></div></section></div>}
     </main>
   );
 }

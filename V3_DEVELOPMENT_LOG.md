@@ -57,7 +57,7 @@ WHERE id = 'content-001';
 ### 账号和邮箱验证
 
 - 新增邮箱密码注册、登录和退出接口。
-- 密码使用 PBKDF2-SHA-512、独立随机盐和 210000 次迭代保存。
+- 密码使用 PBKDF2-SHA-512、独立随机盐和 100000 次迭代保存；这是 Cloudflare Workers Web Crypto 当前支持的上限。
 - 会话令牌只保存在 HttpOnly Cookie，D1 仅保存 SHA-256 哈希。
 - 注册接入 Cloudflare Turnstile。
 - 接入 Resend 邮件，改为 6 位数字验证码，验证码 10 分钟有效且只能使用一次。

@@ -160,7 +160,8 @@ app.use('/api/*', async (context, next) => {
 
 const SESSION_COOKIE_NAME = 'lexiscene_session';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30;
-const PASSWORD_ITERATIONS = 210_000;
+// Cloudflare Workers Web Crypto currently rejects PBKDF2 counts above 100,000.
+const PASSWORD_ITERATIONS = 100_000;
 
 interface AuthUser {
   id: string;

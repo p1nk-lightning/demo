@@ -23,12 +23,19 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
     throw new ApiError('无法连接后端服务，请确认 Worker 已启动或检查网络连接', 0);
   }
 
-  const data = await response.json().catch(() => null) as { error?: string } | T | null;
+  const responseText = await response.text();
+  let data: ({ error?: string } | T | null) = null;
+  try {
+    data = responseText ? JSON.parse(responseText) as { error?: string } | T : null;
+  } catch {
+    data = null;
+  }
   if (!response.ok) {
     const message = data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
       ? data.error
-      : '请求失败，请稍后再试';
+      : `请求失败（HTTP ${response.status}），请稍后再试`;
     throw new ApiError(message, response.status);
   }
+  if (data === null) throw new ApiError('服务返回了无效响应，请稍后再试', response.status);
   return data as T;
 }

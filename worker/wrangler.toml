@@ -6,7 +6,7 @@ keep_vars = true
 preview_urls = false
 
 [vars]
-EMAIL_FROM = "LexiScene <onboarding@resend.dev>"
+EMAIL_FROM =  "LexiScene <noreply@send.lexiscene.online>"
 FRONTEND_ORIGIN = "https://www.lexiscene.online"
 # 非敏感默认可在 wrangler.toml 中
 # 敏感 key（模型、Turnstile、Resend）通过 .dev.vars 或 Cloudflare dashboard 配置

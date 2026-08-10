@@ -459,7 +459,14 @@ async function sendVerificationEmail(env: Env, email: string, code: string) {
       html: `<p>你的 LexiScene 邮箱验证码是：</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${code}</p><p>验证码将在 10 分钟后失效，请勿转发给他人。</p>`,
     }),
   });
-  if (!response.ok) throw new Error('验证邮件发送失败');
+  if (!response.ok) {
+    const providerMessage = (await response.text()).slice(0, 1000);
+    console.error('Resend rejected a verification email', {
+      status: response.status,
+      providerMessage,
+    });
+    throw new Error('验证邮件发送失败');
+  }
 }
 
 async function verifyTurnstile(env: Env, token: string, ip: string) {

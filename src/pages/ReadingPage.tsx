@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, ExternalLink, Minus, Plus, Star, Trash2 } from 'lucide-react';
+import { ArrowLeft, ExternalLink, Languages, Minus, Plus, Star, Trash2 } from 'lucide-react';
 import { ArticleView } from '@/components/ArticleView';
 import { QuestionCard } from '@/components/QuestionCard';
 import { useAppStore, buildProgress, computeScore } from '@/store/useAppStore';
@@ -48,6 +48,7 @@ export function ReadingPage() {
   const [favoriteSaving, setFavoriteSaving] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingRecord, setDeletingRecord] = useState(false);
+  const [translatedQuestions, setTranslatedQuestions] = useState<Set<number>>(() => new Set());
 
   useEffect(() => {
     if (!articleId) return;
@@ -59,6 +60,7 @@ export function ReadingPage() {
         return;
       }
       setArticle(loaded);
+      setTranslatedQuestions(new Set());
       setFavorite(Boolean(loaded.isFavorite));
       setCurrentArticle(loaded);
       resetAnswers();
@@ -73,6 +75,24 @@ export function ReadingPage() {
   const wordCount = article?.wordCount ?? article?.article.trim().split(/\s+/).filter(Boolean).length ?? 0;
   const readMinutes = article?.estimatedMinutes ?? Math.max(1, Math.ceil(wordCount / 150));
   const displayDate = article?.publishDate || (article ? new Date(article.createdAt).toLocaleDateString('zh-CN') : '');
+  const translatableQuestionIndexes = useMemo(() => article?.questions
+    .map((question, index) => question.questionZh && question.optionsZh?.length === 4 ? index : -1)
+    .filter((index) => index >= 0) ?? [], [article]);
+  const allTranslationsVisible = translatableQuestionIndexes.length > 0
+    && translatableQuestionIndexes.every((index) => translatedQuestions.has(index));
+
+  function toggleQuestionTranslation(index: number) {
+    setTranslatedQuestions((current) => {
+      const next = new Set(current);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  }
+
+  function toggleAllTranslations() {
+    setTranslatedQuestions(allTranslationsVisible ? new Set() : new Set(translatableQuestionIndexes));
+  }
 
   function changeFontSize(delta: number) {
     const next = Math.max(FONT_MIN, Math.min(FONT_MAX, fontSize + delta));
@@ -152,8 +172,8 @@ export function ReadingPage() {
       </article>
 
       <section className="mx-auto mt-8 max-w-3xl">
-        {!submitted ? <><QuestionCard question={article.questions[activeQ]} index={activeQ} total={article.questions.length} selected={answers[activeQ]} onSelect={(value) => setAnswer(activeQ, value)} onPrev={() => setActiveQ((index) => Math.max(0, index - 1))} onNext={() => setActiveQ((index) => Math.min(article.questions.length - 1, index + 1))} />
-          <div className="mt-4 flex flex-col gap-3 border-t border-ink-200 pt-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-ink-500">已答 <span className="num font-semibold text-ink-900">{answers.filter((answer) => answer != null).length}</span> / {article.questions.length}</p><Button variant="primary" onClick={handleSubmit} disabled={!allAnswered} loading={submitting}>提交答卷</Button></div></> : <ResultPanel submitted={submitted} article={article} onRetake={() => { resetAnswers(); setSubmitted(null); setActiveQ(0); }} />}
+        {!submitted ? <>{translatableQuestionIndexes.length > 0 && <div className="mb-3 flex justify-end"><Button size="sm" variant="secondary" onClick={toggleAllTranslations} trailing={<Languages size={15} />}>{allTranslationsVisible ? '隐藏全部翻译' : '翻译全部题目'}</Button></div>}<QuestionCard question={article.questions[activeQ]} index={activeQ} total={article.questions.length} selected={answers[activeQ]} onSelect={(value) => setAnswer(activeQ, value)} onPrev={() => setActiveQ((index) => Math.max(0, index - 1))} onNext={() => setActiveQ((index) => Math.min(article.questions.length - 1, index + 1))} translated={translatedQuestions.has(activeQ)} onToggleTranslation={() => toggleQuestionTranslation(activeQ)} />
+          <div className="mt-4 flex flex-col gap-3 border-t border-ink-200 pt-4 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm text-ink-500">已答 <span className="num font-semibold text-ink-900">{answers.filter((answer) => answer != null).length}</span> / {article.questions.length}</p><Button variant="primary" onClick={handleSubmit} disabled={!allAnswered} loading={submitting}>提交答卷</Button></div></> : <ResultPanel submitted={submitted} article={article} translatedQuestions={translatedQuestions} allTranslationsVisible={allTranslationsVisible} onToggleTranslation={toggleQuestionTranslation} onToggleAllTranslations={toggleAllTranslations} onRetake={() => { resetAnswers(); setSubmitted(null); setActiveQ(0); }} />}
       </section>
       <p className="mt-6 text-center text-xs text-ink-400">点击正文中的任意单词查看释义。绿色表示已掌握词，蓝色表示生词。</p>
       <style>{`.article-prose { font-size: ${fontSize}px; }`}</style>
@@ -162,7 +182,8 @@ export function ReadingPage() {
   );
 }
 
-function ResultPanel({ submitted, article, onRetake }: { submitted: UserProgress; article: Article; onRetake: () => void }) {
+function ResultPanel({ submitted, article, translatedQuestions, allTranslationsVisible, onToggleTranslation, onToggleAllTranslations, onRetake }: { submitted: UserProgress; article: Article; translatedQuestions: Set<number>; allTranslationsVisible: boolean; onToggleTranslation: (index: number) => void; onToggleAllTranslations: () => void; onRetake: () => void }) {
   const fullScore = submitted.score === article.questions.length;
-  return <div className="space-y-4"><Card variant="outlined" className={fullScore ? 'border-accent-500 bg-accent-50 p-5' : 'border-warning-500 bg-warning-50 p-5'}><div className={`text-2xl font-bold num ${fullScore ? 'text-accent-700' : 'text-warning-700'}`}>评分 {submitted.score} / {article.questions.length}</div><div className="mt-3 flex gap-2"><Button variant="secondary" size="sm" onClick={onRetake}>再做一次</Button><Link to="/"><Button variant="secondary" size="sm">返回首页</Button></Link></div></Card>{article.questions.map((question, index) => { const chosen = submitted.answers[index]; const correct = chosen === question.answer; return <Card key={question.question} variant="outlined" className={`p-3 text-sm ${correct ? 'border-accent-200 bg-accent-50/40' : 'border-danger-200 bg-danger-50/40'}`}><div className="font-medium text-ink-700">Q{index + 1} {correct ? '正确' : '正确答案'}: {String.fromCharCode(65 + question.answer)}</div><div className="mt-1 text-ink-600">{question.question}</div></Card>; })}</div>;
+  const hasTranslations = article.questions.some((question) => question.questionZh && question.optionsZh?.length === 4);
+  return <div className="space-y-4"><Card variant="outlined" className={fullScore ? 'border-accent-500 bg-accent-50 p-5' : 'border-warning-500 bg-warning-50 p-5'}><div className="flex flex-wrap items-center justify-between gap-3"><div className={`text-2xl font-bold num ${fullScore ? 'text-accent-700' : 'text-warning-700'}`}>评分 {submitted.score} / {article.questions.length}</div>{hasTranslations && <Button size="sm" variant="secondary" onClick={onToggleAllTranslations} trailing={<Languages size={15} />}>{allTranslationsVisible ? '隐藏全部翻译' : '翻译全部题目'}</Button>}</div><div className="mt-3 flex gap-2"><Button variant="secondary" size="sm" onClick={onRetake}>再做一次</Button><Link to="/"><Button variant="secondary" size="sm">返回首页</Button></Link></div></Card>{article.questions.map((question, index) => { const chosen = submitted.answers[index]; const correct = chosen === question.answer; const translated = translatedQuestions.has(index); const hasTranslation = Boolean(question.questionZh && question.optionsZh?.length === 4); return <Card key={question.question} variant="outlined" className={`p-3 text-sm ${correct ? 'border-accent-200 bg-accent-50/40' : 'border-danger-200 bg-danger-50/40'}`}><div className="flex items-center justify-between gap-3"><div className="font-medium text-ink-700">Q{index + 1} {correct ? '正确' : '正确答案'}: {String.fromCharCode(65 + question.answer)}</div>{hasTranslation && <button type="button" onClick={() => onToggleTranslation(index)} title={translated ? '隐藏中文翻译' : '显示中文翻译'} aria-pressed={translated} className={`icon-button h-8 w-8 ${translated ? 'border-brand-200 bg-brand-50 text-brand-700' : ''}`}><Languages size={15} /></button>}</div><div className="mt-1 text-ink-600">{question.question}</div>{translated && question.questionZh && <div className="mt-1 text-xs leading-5 text-ink-400">{question.questionZh}</div>}</Card>; })}</div>;
 }

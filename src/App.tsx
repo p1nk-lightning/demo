@@ -13,7 +13,7 @@ const ReadingPage = lazy(() => import('@/pages/ReadingPage').then((module) => ({
 const HistoryPage = lazy(() => import('@/pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
 const FavoritesPage = lazy(() => import('@/pages/FavoritesPage').then((module) => ({ default: module.FavoritesPage })));
 const LibraryPage = lazy(() => import('@/pages/LibraryPage').then((module) => ({ default: module.LibraryPage })));
-const ImportPage = lazy(() => import('@/pages/ImportPage').then((module) => ({ default: module.ImportPage })));
+const ImportPage = lazy(() => import('@/pages/DocumentImportPage').then((module) => ({ default: module.DocumentImportPage })));
 const AuthPage = lazy(() => import('@/pages/AuthPage').then((module) => ({ default: module.AuthPage })));
 const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then((module) => ({ default: module.VerifyEmailPage })));
 const AdminContentPage = lazy(() => import('@/pages/AdminContentPage').then((module) => ({ default: module.AdminContentPage })));

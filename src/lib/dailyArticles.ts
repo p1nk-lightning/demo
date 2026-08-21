@@ -8,9 +8,9 @@ export const DAILY_ARTICLES: Article[] = [
     article:
       'Cities around the world are planting more trees. Trees make streets cooler, clean the air, and give birds a place to live. They can also help people feel calmer. A city tree may look simple, but it works every day. Its leaves provide shade in summer, while its roots hold water after heavy rain. For these reasons, many communities now treat trees as an important part of city planning.',
     questions: [
-      { question: '文章主要说明了什么？', options: ['城市树木的作用', '如何建造房屋', '鸟类迁徙路线', '夏季旅行计划'], answer: 0 },
-      { question: '树根可以帮助什么？', options: ['制造噪音', '保存雨水', '增加交通', '改变季节'], answer: 1 },
-      { question: '作者对城市种树持什么态度？', options: ['支持', '反对', '担忧', '无所谓'], answer: 0 },
+      { question: 'What is the article mainly about?', options: ['The benefits of city trees', 'How to build houses', 'Bird migration routes', 'Summer travel plans'], answer: 0, questionZh: '这篇文章主要讲什么？', optionsZh: ['城市树木的益处', '如何建造房屋', '鸟类迁徙路线', '夏季旅行计划'], evidence: 'Trees make streets cooler, clean the air, and give birds a place to live.' },
+      { question: 'What can tree roots help do?', options: ['Create noise', 'Hold rainwater', 'Increase traffic', 'Change the seasons'], answer: 1, questionZh: '树根可以帮助做什么？', optionsZh: ['制造噪音', '留住雨水', '增加交通', '改变季节'], evidence: 'Its leaves provide shade in summer, while its roots hold water after heavy rain.' },
+      { question: 'How does the author view planting trees in cities?', options: ['Supportively', 'Negatively', 'Fearfully', 'Indifferently'], answer: 0, questionZh: '作者如何看待城市植树？', optionsZh: ['支持', '反对', '恐惧', '漠不关心'], evidence: 'For these reasons, many communities now treat trees as an important part of city planning.' },
     ],
     difficulty: 'CET4',
     vocabHitIds: [],
@@ -29,9 +29,9 @@ export const DAILY_ARTICLES: Article[] = [
     article:
       'Digital tools make communication immediate, but constant connection has a hidden cost. Each notification asks the brain to switch attention, and returning to the original task takes time. Researchers suggest that people create periods of deliberate disconnection. Turning off unnecessary alerts, placing the phone out of reach, and scheduling time for messages can reduce mental pressure without rejecting technology altogether.',
     questions: [
-      { question: '持续收到通知的主要问题是什么？', options: ['设备更贵', '注意力频繁切换', '网络变慢', '信息会消失'], answer: 1 },
-      { question: '作者建议怎样处理消息？', options: ['完全不用手机', '立即回复全部消息', '安排固定时间查看', '购买新设备'], answer: 2 },
-      { question: '文章对科技的态度是什么？', options: ['全面否定', '理性使用', '盲目推崇', '完全无关'], answer: 1 },
+      { question: 'What is the main problem with constant notifications?', options: ['Devices become more expensive', 'Attention switches repeatedly', 'The internet becomes slower', 'Messages disappear'], answer: 1, questionZh: '持续收到通知的主要问题是什么？', optionsZh: ['设备变得更贵', '注意力反复切换', '网络变慢', '消息消失'], evidence: 'Each notification asks the brain to switch attention, and returning to the original task takes time.' },
+      { question: 'What does the author suggest people do with messages?', options: ['Stop using phones entirely', 'Answer every message immediately', 'Set specific times to check them', 'Buy a new device'], answer: 2, questionZh: '作者建议人们如何处理消息？', optionsZh: ['完全停止使用手机', '立即回复每条消息', '设定固定时间查看', '购买新设备'], evidence: 'Turning off unnecessary alerts, placing the phone out of reach, and scheduling time for messages can reduce mental pressure without rejecting technology altogether.' },
+      { question: 'What is the article\'s attitude toward technology?', options: ['Complete rejection', 'Careful use', 'Uncritical praise', 'Total indifference'], answer: 1, questionZh: '文章对科技持什么态度？', optionsZh: ['完全否定', '谨慎使用', '盲目赞扬', '完全漠不关心'], evidence: 'Researchers suggest that people create periods of deliberate disconnection.' },
     ],
     difficulty: 'CET6',
     vocabHitIds: [],
@@ -50,9 +50,9 @@ export const DAILY_ARTICLES: Article[] = [
     article:
       'Human memory is often compared to a recording, yet psychologists describe it as a process of reconstruction. When people recall an event, they combine stored details with later knowledge and present expectations. This flexibility allows memory to remain useful, but it also makes recollection vulnerable to distortion. Understanding this process matters in classrooms, interviews, and courts, where confidence is sometimes mistaken for accuracy.',
     questions: [
-      { question: '心理学家如何描述记忆？', options: ['固定录像', '重建过程', '生理疾病', '语言能力'], answer: 1 },
-      { question: '记忆为什么可能失真？', options: ['信息完全消失', '回忆会结合后来的知识', '人们拒绝思考', '大脑无法储存细节'], answer: 1 },
-      { question: '文章最后强调了什么？', options: ['信心等于准确', '记忆只用于课堂', '理解记忆机制很重要', '法庭不需要证词'], answer: 2 },
+      { question: 'How do psychologists describe memory?', options: ['A fixed recording', 'A process of reconstruction', 'A physical illness', 'A language skill'], answer: 1, questionZh: '心理学家如何描述记忆？', optionsZh: ['固定的录像', '重建的过程', '生理疾病', '语言能力'], evidence: 'Human memory is often compared to a recording, yet psychologists describe it as a process of reconstruction.' },
+      { question: 'Why can a memory become distorted?', options: ['All information disappears', 'Recall combines details with later knowledge', 'People refuse to think', 'The brain cannot store details'], answer: 1, questionZh: '记忆为什么可能失真？', optionsZh: ['所有信息都会消失', '回忆会把细节与后来的知识结合', '人们拒绝思考', '大脑无法储存细节'], evidence: 'When people recall an event, they combine stored details with later knowledge and present expectations.' },
+      { question: 'What does the final sentence emphasize?', options: ['Confidence always means accuracy', 'Memory matters only in classrooms', 'Understanding memory is important', 'Courts do not need testimony'], answer: 2, questionZh: '最后一句强调了什么？', optionsZh: ['自信总是等于准确', '记忆只在课堂中重要', '理解记忆很重要', '法庭不需要证词'], evidence: 'Understanding this process matters in classrooms, interviews, and courts, where confidence is sometimes mistaken for accuracy.' },
     ],
     difficulty: '考研',
     vocabHitIds: [],
@@ -71,9 +71,9 @@ export const DAILY_ARTICLES: Article[] = [
     article:
       'The circular city is an emerging approach to urban sustainability. Instead of treating used materials as waste, circular systems keep resources in use through repair, sharing, and recycling. The transition requires more than household behaviour: buildings must be designed for reuse, businesses need incentives to recover products, and local governments must coordinate infrastructure. Although the model is difficult to implement, it offers cities a practical way to reduce environmental pressure while supporting innovation.',
     questions: [
-      { question: '循环城市的核心是什么？', options: ['扩大城市边界', '让资源持续使用', '减少公共交通', '增加一次性产品'], answer: 1 },
-      { question: '转型需要哪些主体参与？', options: ['只有家庭', '只有企业', '家庭、企业和政府', '只有设计师'], answer: 2 },
-      { question: '作者如何评价这一模式？', options: ['容易但无效', '困难但有实际价值', '已经完全成熟', '只适用于农村'], answer: 1 },
+      { question: 'What is the central idea of a circular city?', options: ['Expanding city boundaries', 'Keeping resources in use', 'Reducing public transport', 'Increasing disposable products'], answer: 1, questionZh: '循环城市的核心理念是什么？', optionsZh: ['扩大城市边界', '让资源持续使用', '减少公共交通', '增加一次性产品'], evidence: 'Instead of treating used materials as waste, circular systems keep resources in use through repair, sharing, and recycling.' },
+      { question: 'Who must participate in the transition?', options: ['Households alone', 'Businesses alone', 'Households, businesses, and governments', 'Designers alone'], answer: 2, questionZh: '哪些主体必须参与转型？', optionsZh: ['只有家庭', '只有企业', '家庭、企业和政府', '只有设计师'], evidence: 'The transition requires more than household behaviour: buildings must be designed for reuse, businesses need incentives to recover products, and local governments must coordinate infrastructure.' },
+      { question: 'How does the author evaluate the model?', options: ['Easy but ineffective', 'Difficult but practically valuable', 'Already fully mature', 'Suitable only for rural areas'], answer: 1, questionZh: '作者如何评价这一模式？', optionsZh: ['容易但无效', '困难但有实际价值', '已经完全成熟', '只适用于农村地区'], evidence: 'Although the model is difficult to implement, it offers cities a practical way to reduce environmental pressure while supporting innovation.' },
     ],
     difficulty: '雅思',
     vocabHitIds: [],
@@ -92,9 +92,9 @@ export const DAILY_ARTICLES: Article[] = [
     article:
       'Marine researchers increasingly use sound to study ecosystems that are difficult to observe directly. Underwater microphones can record whales, fish, ships, and even the movement of ice over long periods. By comparing these acoustic patterns, scientists detect changes in migration, biodiversity, and human activity. Sound does not replace visual surveys, but it provides a continuous stream of evidence from remote environments where regular fieldwork would be expensive or dangerous.',
     questions: [
-      { question: '水下麦克风的优势是什么？', options: ['能够连续收集证据', '可以阻止船只航行', '完全取代视觉调查', '只能记录鲸鱼'], answer: 0 },
-      { question: '声音数据可以反映什么？', options: ['建筑成本', '迁徙和生物多样性', '空气污染', '农业生产'], answer: 1 },
-      { question: '作者如何看待声学研究？', options: ['视觉调查的补充', '没有实际价值', '只适合浅水区', '会增加野外风险'], answer: 0 },
+      { question: 'What is an advantage of underwater microphones?', options: ['They can collect evidence continuously', 'They can stop ships from moving', 'They completely replace visual surveys', 'They can record only whales'], answer: 0, questionZh: '水下麦克风有什么优势？', optionsZh: ['可以持续收集证据', '可以阻止船只航行', '可以完全取代视觉调查', '只能记录鲸鱼'], evidence: 'Sound does not replace visual surveys, but it provides a continuous stream of evidence from remote environments where regular fieldwork would be expensive or dangerous.' },
+      { question: 'What can sound data reveal?', options: ['Building costs', 'Migration and biodiversity', 'Air pollution', 'Farm production'], answer: 1, questionZh: '声音数据可以揭示什么？', optionsZh: ['建筑成本', '迁徙和生物多样性', '空气污染', '农业生产'], evidence: 'By comparing these acoustic patterns, scientists detect changes in migration, biodiversity, and human activity.' },
+      { question: 'How does the author view acoustic research?', options: ['As a supplement to visual surveys', 'As having no practical value', 'As useful only in shallow water', 'As increasing fieldwork risks'], answer: 0, questionZh: '作者如何看待声学研究？', optionsZh: ['作为视觉调查的补充', '没有实际价值', '只适用于浅水区', '会增加野外工作风险'], evidence: 'Sound does not replace visual surveys, but it provides a continuous stream of evidence from remote environments where regular fieldwork would be expensive or dangerous.' },
     ],
     difficulty: '托福',
     vocabHitIds: [],

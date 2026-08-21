@@ -30,11 +30,20 @@ const QuestionSchema = z.object({
   question: z.string().min(1),
   options: z.tuple([z.string(), z.string(), z.string(), z.string()]),
   answer: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+  questionZh: z.string().min(1).optional(),
+  optionsZh: z.tuple([z.string(), z.string(), z.string(), z.string()]).optional(),
+  evidence: z.string().min(1).optional(),
+});
+const GeneratedQuestionSchema = QuestionSchema.extend({
+  options: z.tuple([z.string().min(1), z.string().min(1), z.string().min(1), z.string().min(1)]),
+  questionZh: z.string().min(1),
+  optionsZh: z.tuple([z.string().min(1), z.string().min(1), z.string().min(1), z.string().min(1)]),
+  evidence: z.string().min(1),
 });
 const ArticlePayloadSchema = z.object({
   title: z.string().min(1),
   article: z.string().min(80),
-  questions: z.array(QuestionSchema).min(3).max(5),
+  questions: z.array(GeneratedQuestionSchema).min(3).max(5),
   difficulty: DifficultySchema,
 });
 const ModelProviderSchema = z.enum(['deepseek', 'qwen', 'doubao']);
@@ -75,7 +84,7 @@ const SyncVocabItemSchema = z.object({
   listId: z.string().min(1).max(120),
   text: z.string().min(1).max(300),
   normalized: z.string().min(1).max(300),
-  source: z.enum(['pasted', 'xlsx', 'reading']),
+  source: z.enum(['pasted', 'xlsx', 'pdf', 'image', 'reading']),
   mastered: z.boolean(),
   addedAt: z.number().int().nonnegative(),
   updatedAt: z.number().int().nonnegative(),
@@ -123,13 +132,43 @@ const ContentReviewSchema = z.object({
   action: z.enum(['approve', 'publish', 'archive', 'candidate']),
   publishDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
-const AiReviewSchema = z.object({
+const AiReviewCoreSchema = z.object({
   verdict: z.enum(['pass', 'needs_revision', 'reject']),
   score: z.number().int().min(0).max(100),
   summary: z.string().min(1).max(2000),
   strengths: z.array(z.string().min(1).max(500)).max(8),
   issues: z.array(z.string().min(1).max(500)).max(8),
   factualChecks: z.array(z.string().min(1).max(500)).max(8),
+  scores: z.object({
+    englishQuality: z.number().int().min(0).max(100),
+    levelFit: z.number().int().min(0).max(100),
+    questionQuality: z.number().int().min(0).max(100),
+    factualReliability: z.number().int().min(0).max(100),
+    originality: z.number().int().min(0).max(100),
+  }),
+  questionChecks: z.array(z.object({
+    index: z.number().int().min(1).max(10),
+    answerSupported: z.boolean(),
+    evidenceFound: z.boolean(),
+    issue: z.string().max(500),
+  })).max(10),
+  copyrightRisk: z.object({
+    level: z.enum(['low', 'medium', 'high']),
+    reason: z.string().min(1).max(1000),
+  }),
+});
+const AiReviewSchema = AiReviewCoreSchema.extend({
+  repairCount: z.number().int().min(0).max(2),
+  deterministicIssues: z.array(z.string().min(1).max(500)).max(30),
+});
+const PublicArticleRepairSchema = z.object({
+  title: z.string().min(1).max(300),
+  summary: z.string().min(1).max(2000),
+  content: z.string().min(80).max(100000),
+  questions: z.array(GeneratedQuestionSchema).min(3).max(5),
+});
+const PublicReviewArticleSchema = PublicArticleRepairSchema.extend({
+  questions: z.array(QuestionSchema).min(3).max(5),
 });
 
 const DIFFICULTY_PROMPT: Record<Difficulty, string> = {
@@ -315,6 +354,7 @@ async function callProvider(options: {
   try {
     response = await fetch(completionUrl(options.baseUrl), {
       method: 'POST',
+      signal: AbortSignal.timeout(60_000),
       headers: {
         'content-type': 'application/json',
         authorization: 'Bearer ' + (options.proxyToken ?? options.key),
@@ -494,6 +534,86 @@ function countVocabHits(article: string, words: string[]) {
   return [...hits];
 }
 
+type GeneratedArticlePayload = z.infer<typeof ArticlePayloadSchema>;
+
+function englishWordCount(value: string) {
+  return value.match(/[A-Za-z]+(?:['-][A-Za-z]+)*/g)?.length ?? 0;
+}
+
+function normalizedText(value: string) {
+  return value.toLowerCase().replace(/[“”‘’]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function hasCjk(value: string) {
+  return /[\u3400-\u9fff]/u.test(value);
+}
+
+function validateGeneratedArticle(article: GeneratedArticlePayload, input: z.infer<typeof GenerateRequestSchema>, targetHits: number) {
+  const issues: string[] = [];
+  const words = englishWordCount(article.article);
+  const minimumWords = Math.max(80, Math.floor(input.wordCount * 0.8));
+  const maximumWords = Math.ceil(input.wordCount * 1.2);
+  if (words < minimumWords || words > maximumWords) issues.push(`article_word_count:${words}:${minimumWords}-${maximumWords}`);
+  if (article.difficulty !== input.difficulty) issues.push(`difficulty_mismatch:${article.difficulty}:${input.difficulty}`);
+  if (article.questions.length !== input.questionCount) issues.push(`question_count:${article.questions.length}:${input.questionCount}`);
+  if (hasCjk(article.title)) issues.push('title_must_be_english');
+  if (hasCjk(article.article)) issues.push('article_must_be_english');
+  if (input.wordCount >= 250 && article.article.split(/\n\s*\n/).filter(Boolean).length < 2) issues.push('article_needs_multiple_paragraphs');
+
+  const hitCount = countVocabHits(article.article, input.sampleWords).length;
+  if (hitCount < targetHits) issues.push(`target_word_hits:${hitCount}:${targetHits}`);
+  const questionKeys = new Set<string>();
+
+  article.questions.forEach((question, index) => {
+    const prefix = `question_${index + 1}`;
+    if (hasCjk(question.question)) issues.push(`${prefix}_must_be_english`);
+    if (!hasCjk(question.questionZh)) issues.push(`${prefix}_missing_chinese_translation`);
+    if (question.options.some((option) => hasCjk(option))) issues.push(`${prefix}_options_must_be_english`);
+    if (question.optionsZh.some((option) => !hasCjk(option))) issues.push(`${prefix}_option_translations_missing`);
+    if (new Set(question.options.map(normalizedText)).size !== 4) issues.push(`${prefix}_duplicate_options`);
+    const questionKey = normalizedText(question.question);
+    if (questionKeys.has(questionKey)) issues.push(`${prefix}_duplicate_question`);
+    questionKeys.add(questionKey);
+    if (!normalizedText(article.article).includes(normalizedText(question.evidence))) issues.push(`${prefix}_evidence_not_found`);
+  });
+
+  return { issues, wordCount: words, hitCount };
+}
+
+const PUBLIC_DIFFICULTY_LIMITS: Record<Difficulty, { minWords: number; maxWords: number; minSentenceWords: number; maxSentenceWords: number }> = {
+  CET4: { minWords: 400, maxWords: 500, minSentenceWords: 10, maxSentenceWords: 20 },
+  CET6: { minWords: 500, maxWords: 620, minSentenceWords: 13, maxSentenceWords: 25 },
+  考研: { minWords: 600, maxWords: 720, minSentenceWords: 15, maxSentenceWords: 30 },
+  雅思: { minWords: 700, maxWords: 850, minSentenceWords: 14, maxSentenceWords: 30 },
+  托福: { minWords: 750, maxWords: 900, minSentenceWords: 16, maxSentenceWords: 32 },
+};
+
+function validatePublicArticle(article: z.infer<typeof PublicReviewArticleSchema>, difficulty: Difficulty) {
+  const issues: string[] = [];
+  const limits = PUBLIC_DIFFICULTY_LIMITS[difficulty];
+  const words = englishWordCount(article.content);
+  const sentenceCount = Math.max(1, article.content.match(/[.!?]+(?:\s|$)/g)?.length ?? 0);
+  const averageSentenceWords = words / sentenceCount;
+  if (words < limits.minWords || words > limits.maxWords) issues.push(`正文词数为 ${words}，${difficulty} 应为 ${limits.minWords}-${limits.maxWords} 词`);
+  if (averageSentenceWords < limits.minSentenceWords || averageSentenceWords > limits.maxSentenceWords) issues.push(`平均句长为 ${averageSentenceWords.toFixed(1)}，建议范围 ${limits.minSentenceWords}-${limits.maxSentenceWords}`);
+  if (hasCjk(article.title)) issues.push('英文标题中含有中文字符');
+  if (hasCjk(article.content)) issues.push('英文正文中含有中文字符');
+  if (article.content.split(/\n\s*\n/).filter(Boolean).length < 3) issues.push('正文少于三个段落');
+  const questionKeys = new Set<string>();
+  article.questions.forEach((question, index) => {
+    const label = `第 ${index + 1} 题`;
+    if (hasCjk(question.question)) issues.push(`${label}题干不是纯英文`);
+    if (question.options.some((option) => !option.trim() || hasCjk(option))) issues.push(`${label}存在空选项或中文选项`);
+    if (!hasCjk(question.questionZh ?? '') || !question.optionsZh || question.optionsZh.some((option) => !hasCjk(option))) issues.push(`${label}缺少中文翻译`);
+    if (new Set(question.options.map(normalizedText)).size !== 4) issues.push(`${label}存在重复选项`);
+    const key = normalizedText(question.question);
+    if (questionKeys.has(key)) issues.push(`${label}与其他题目重复`);
+    questionKeys.add(key);
+    if (!question.evidence || !normalizedText(article.content).includes(normalizedText(question.evidence))) issues.push(`${label}证据句无法在正文中找到`);
+  });
+  return { issues, wordCount: words, averageSentenceWords };
+}
+
 function minimumHits(wordCount: number) {
   if (wordCount < 200) return 5;
   if (wordCount < 400) return 10;
@@ -539,6 +659,18 @@ function normalizeDictionaryWord(value: string) {
 function isAdmin(env: Env, user: AuthUser) {
   const emails = (env.ADMIN_EMAILS ?? '').split(',').map((email) => email.trim().toLowerCase()).filter(Boolean);
   return emails.includes(user.email.toLowerCase());
+}
+
+function isPassingAiReview(value: unknown) {
+  const parsed = AiReviewSchema.safeParse(parseJson(value, null));
+  if (!parsed.success) return false;
+  const review = parsed.data;
+  return review.verdict === 'pass'
+    && review.score >= 80
+    && review.deterministicIssues.length === 0
+    && review.copyrightRisk.level !== 'high'
+    && review.questionChecks.length > 0
+    && review.questionChecks.every((check) => check.answerSupported && check.evidenceFound);
 }
 
 function dictionaryItem(row: Record<string, unknown>) {
@@ -917,8 +1049,9 @@ app.post('/api/admin/content/:id/review', async (context) => {
   const { action, publishDate } = parsed.data;
   let result: D1Result<unknown>;
   if (action === 'publish') {
-    const article = await context.env.DB.prepare('SELECT difficulty FROM content_articles WHERE id = ?').bind(context.req.param('id')).first<{ difficulty: Difficulty }>();
+    const article = await context.env.DB.prepare('SELECT difficulty, status, publish_date FROM content_articles WHERE id = ?').bind(context.req.param('id')).first<{ difficulty: Difficulty; status: string; publish_date: string | null }>();
     if (!article) return context.json({ error: '文章不存在' }, 404);
+    if (article.status !== 'published' || article.publish_date !== null) return context.json({ error: '只有文章池中的文章可以发布' }, 409);
     const targetDate = publishDate || chinaDayKey();
     const updates = await context.env.DB.batch([
       context.env.DB.prepare('UPDATE content_articles SET publish_date = NULL, updated_at = ? WHERE status = ? AND difficulty = ? AND publish_date = ? AND id != ?')
@@ -928,6 +1061,10 @@ app.post('/api/admin/content/:id/review', async (context) => {
     ]);
     result = updates[1];
   } else if (action === 'approve') {
+    const article = await context.env.DB.prepare('SELECT status, ai_review_json FROM content_articles WHERE id = ?').bind(context.req.param('id')).first<{ status: string; ai_review_json: string | null }>();
+    if (!article) return context.json({ error: '文章不存在' }, 404);
+    if (article.status !== 'candidate') return context.json({ error: '只有候选文章可以加入文章池' }, 409);
+    if (!isPassingAiReview(article.ai_review_json)) return context.json({ error: '请先完成并通过 AI 审核，再加入文章池' }, 409);
     result = await context.env.DB.prepare("UPDATE content_articles SET status = 'published', publish_date = NULL, reviewed_at = ?, published_at = NULL, updated_at = ? WHERE id = ?")
       .bind(now, now, context.req.param('id')).run();
   } else {
@@ -943,23 +1080,90 @@ app.post('/api/admin/content/:id/ai-review', async (context) => {
   const user = await getSessionUser(context.env.DB, context.req.raw);
   if (!user) return context.json({ error: '请先登录' }, 401);
   if (!isAdmin(context.env, user)) return context.json({ error: '没有内容审核权限' }, 403);
-  const article = await context.env.DB.prepare('SELECT id, title, summary, content, difficulty, topic, questions_json, source_title, source_url FROM content_articles WHERE id = ?').bind(context.req.param('id')).first<Record<string, unknown>>();
-  if (!article) return context.json({ error: '文章不存在' }, 404);
+  const row = await context.env.DB.prepare('SELECT id, title, summary, content, difficulty, topic, questions_json, source_title, source_url FROM content_articles WHERE id = ?').bind(context.req.param('id')).first<Record<string, unknown>>();
+  if (!row) return context.json({ error: '文章不存在' }, 404);
   try {
     const provider = getReviewProvider(context.env);
-    const raw = await callProvider({
-      ...provider,
-      systemPrompt: 'You are a strict editorial reviewer for an English learning platform. Return valid JSON only. Do not publish anything. Check English quality, level fit, question-answer consistency, possible factual overclaims, copyright risk, and whether the source is clearly credited.',
-      userPrompt: JSON.stringify({
-        task: 'Review this candidate article and provide a recommendation for a human editor.',
-        article: { title: article.title, summary: article.summary, content: article.content, difficulty: article.difficulty, topic: article.topic, questions: parseJson(article.questions_json, []), sourceTitle: article.source_title, sourceUrl: article.source_url },
-        output: '{verdict: pass|needs_revision|reject, score: 0-100, summary: string, strengths: string[], issues: string[], factualChecks: string[]}',
-      }),
+    const difficulty = DifficultySchema.parse(row.difficulty);
+    let article = PublicReviewArticleSchema.parse({
+      title: row.title,
+      summary: row.summary,
+      content: row.content,
+      questions: parseJson(row.questions_json, []),
     });
-    const review = AiReviewSchema.parse(raw.value);
+    let repairCount = 0;
+    let deterministic = validatePublicArticle(article, difficulty);
+    let reviewCore: z.infer<typeof AiReviewCoreSchema> | null = null;
+
+    while (true) {
+      const raw = await callProvider({
+        ...provider,
+        systemPrompt: [
+          'You are a strict editorial reviewer for an English-learning platform. Return valid JSON only and never publish content.',
+          'Evaluate English quality, stated exam-level fit, question-answer consistency, exact evidence, factual overclaims, source attribution, and copyright/originality risk.',
+          'A passing article must have answerable English questions, four English options per question, accurate Chinese translations, and an exact supporting quote copied from the article for every answer.',
+          'Do not claim that you visited the source URL. Put claims that need source verification in factualChecks.',
+        ].join('\n'),
+        userPrompt: JSON.stringify({
+          task: 'Return a recommendation for a human editor.',
+          deterministicIssues: deterministic.issues,
+          article: { ...article, difficulty, topic: row.topic, sourceTitle: row.source_title, sourceUrl: row.source_url },
+          output: {
+            verdict: 'pass | needs_revision | reject', score: 'integer 0-100', summary: 'string', strengths: ['string'], issues: ['string'], factualChecks: ['string'],
+            scores: { englishQuality: '0-100', levelFit: '0-100', questionQuality: '0-100', factualReliability: '0-100', originality: '0-100' },
+            questionChecks: [{ index: '1-based integer', answerSupported: 'boolean', evidenceFound: 'boolean', issue: 'string, empty when none' }],
+            copyrightRisk: { level: 'low | medium | high', reason: 'string' },
+          },
+        }),
+      });
+      reviewCore = AiReviewCoreSchema.parse(raw.value);
+      const questionChecksPass = reviewCore.questionChecks.length === article.questions.length
+        && reviewCore.questionChecks.every((check) => check.answerSupported && check.evidenceFound);
+      const passed = deterministic.issues.length === 0
+        && reviewCore.verdict === 'pass'
+        && reviewCore.score >= 80
+        && reviewCore.copyrightRisk.level !== 'high'
+        && questionChecksPass;
+      if (passed || repairCount >= 2 || reviewCore.verdict === 'reject' || reviewCore.copyrightRisk.level === 'high') break;
+
+      const repair = await callProvider({
+        ...provider,
+        systemPrompt: [
+          'Repair a candidate English reading article for a human editor. Return valid JSON only.',
+          'Questions and all four options must be English. Put Chinese only in questionZh and optionsZh. Every evidence value must be a short exact quote from content.',
+          'Preserve the title and content when the listed problems concern only questions or translations. Never add facts not supported by the supplied source lead.',
+          'Return {title,summary,content,questions:[{question,options:[4 strings],answer:0|1|2|3,questionZh,optionsZh:[4 strings],evidence}]}.',
+        ].join('\n'),
+        userPrompt: JSON.stringify({
+          difficulty,
+          source: { title: row.source_title, url: row.source_url },
+          deterministicIssues: deterministic.issues,
+          reviewIssues: reviewCore.issues,
+          factualChecks: reviewCore.factualChecks,
+          payload: article,
+        }),
+      });
+      article = PublicArticleRepairSchema.parse(repair.value);
+      repairCount += 1;
+      deterministic = validatePublicArticle(article, difficulty);
+    }
+
+    if (!reviewCore) throw new Error('AI 审核没有返回结果');
+    const hardFailure = deterministic.issues.length > 0
+      || reviewCore.copyrightRisk.level === 'high'
+      || reviewCore.questionChecks.length !== article.questions.length
+      || reviewCore.questionChecks.some((check) => !check.answerSupported || !check.evidenceFound);
+    const review = AiReviewSchema.parse({
+      ...reviewCore,
+      verdict: hardFailure && reviewCore.verdict === 'pass' ? 'needs_revision' : reviewCore.verdict,
+      score: hardFailure ? Math.min(reviewCore.score, 69) : reviewCore.score,
+      repairCount,
+      deterministicIssues: deterministic.issues,
+    });
     const reviewedAt = Date.now();
-    await context.env.DB.prepare('UPDATE content_articles SET ai_review_json = ?, ai_reviewed_at = ?, ai_review_model = ?, updated_at = ? WHERE id = ?')
-      .bind(JSON.stringify(review), reviewedAt, provider.model, reviewedAt, context.req.param('id')).run();
+    const finalWordCount = englishWordCount(article.content);
+    await context.env.DB.prepare('UPDATE content_articles SET title = ?, summary = ?, content = ?, questions_json = ?, word_count = ?, estimated_minutes = ?, ai_review_json = ?, ai_reviewed_at = ?, ai_review_model = ?, updated_at = ? WHERE id = ?')
+      .bind(article.title, article.summary, article.content, JSON.stringify(article.questions), finalWordCount, Math.max(3, Math.ceil(finalWordCount / 150)), JSON.stringify(review), reviewedAt, provider.model, reviewedAt, context.req.param('id')).run();
     return context.json({ ok: true, review, reviewedAt, model: provider.model });
   } catch (error) {
     return context.json({ error: error instanceof Error ? error.message : 'AI 审核失败' }, 502);
@@ -1063,29 +1267,50 @@ app.post('/api/generate', async (context) => {
   }
   const usageId = await reserveGeneration(context.env.DB, user.id, provider);
   if (!usageId) return context.json({ error: '今日生成额度已用完，或请求过于频繁，请稍后再试' }, 429);
-  const targetHits = minimumHits(input.wordCount);
+  const targetHits = Math.min(minimumHits(input.wordCount), input.sampleWords.length);
   const systemPrompt = [
-    'You create English reading comprehension for Chinese learners.',
+    'You create original English reading comprehension for Chinese learners. Return valid JSON only.',
     DIFFICULTY_PROMPT[input.difficulty],
     `Write approximately ${input.wordCount} English words about ${input.topic === '随机' ? 'a suitable engaging topic' : input.topic}.`,
-    `Create exactly ${input.questionCount} Chinese multiple-choice questions, each with four options and one answer index.`,
-    'Return JSON only: {title, article, questions:[{question,options:[4 strings],answer:0|1|2|3}], difficulty}.',
+    'Use multiple coherent paragraphs. Prefer general educational explanations or fictional situations and avoid unsupported statistics, quotations, or breaking-news claims.',
+    `Create exactly ${input.questionCount} multiple-choice questions. Every question and all four options must be English only.`,
+    'For each question also provide an accurate Chinese translation of the stem and all options.',
+    'For evidence, copy one short exact English quote from the article that supports the answer.',
+    'Return {title, article, questions:[{question,options:[4 strings],answer:0|1|2|3,questionZh,optionsZh:[4 strings],evidence}], difficulty}.',
   ].join('\n');
   const userPrompt = `Naturally include at least ${targetHits} of these words: ${input.sampleWords.join(', ')}.`;
   try {
-    const raw = await callProvider({ ...provider, systemPrompt, userPrompt });
-    /* if (input.provider && userKey) {
-      raw = await callProvider({ ...input.provider, key: userKey, systemPrompt, userPrompt });
-    } else {
-      raw = await safeCallSystemProvider(context.env, systemPrompt, userPrompt);
-    } */
-    const article = ArticlePayloadSchema.parse(raw.value);
+    const initial = await callProvider({ ...provider, systemPrompt, userPrompt });
+    let article = ArticlePayloadSchema.parse(initial.value);
+    let quality = validateGeneratedArticle(article, input, targetHits);
+    let promptTokens = initial.usage.promptTokens;
+    let completionTokens = initial.usage.completionTokens;
+    let repaired = false;
+
+    if (quality.issues.length) {
+      const repair = await callProvider({
+        ...provider,
+        systemPrompt: [
+          'Repair an English reading-comprehension JSON payload. Return valid JSON only.',
+          'Keep valid content unchanged. Questions and options must remain English; Chinese is allowed only in questionZh and optionsZh.',
+          'Every evidence value must be an exact quote from the article. Return the complete corrected payload using the original schema.',
+        ].join('\n'),
+        userPrompt: JSON.stringify({ issues: quality.issues, target: { wordCount: input.wordCount, targetHits }, payload: article }),
+      });
+      article = ArticlePayloadSchema.parse(repair.value);
+      quality = validateGeneratedArticle(article, input, targetHits);
+      promptTokens = (promptTokens ?? 0) + (repair.usage.promptTokens ?? 0) || null;
+      completionTokens = (completionTokens ?? 0) + (repair.usage.completionTokens ?? 0) || null;
+      repaired = true;
+    }
+
+    if (quality.issues.length) throw new Error(`生成结果未通过质量检查：${quality.issues.slice(0, 4).join(', ')}`);
     const hitIds = countVocabHits(article.article, input.sampleWords);
     const articleId = crypto.randomUUID();
     await finishGeneration(context.env.DB, usageId, {
-      status: 'succeeded', articleId, promptTokens: raw.usage.promptTokens, completionTokens: raw.usage.completionTokens,
+      status: 'succeeded', articleId, promptTokens, completionTokens,
     });
-    return context.json({ ...article, articleId, provider: provider.provider, model: provider.model, vocabHitIds: hitIds, meetThreshold: hitIds.length >= targetHits });
+    return context.json({ ...article, articleId, provider: provider.provider, model: provider.model, vocabHitIds: hitIds, meetThreshold: hitIds.length >= targetHits, quality: { repaired, wordCount: quality.wordCount, targetWordHits: quality.hitCount } });
   } catch (error) {
     await finishGeneration(context.env.DB, usageId, { status: 'failed', errorCode: 'provider_error' });
     return context.json({ error: error instanceof Error ? error.message : '生成失败' }, 502);

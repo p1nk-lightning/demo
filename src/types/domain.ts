@@ -1,6 +1,6 @@
 export type Difficulty = 'CET4' | 'CET6' | '考研' | '雅思' | '托福';
 
-export type WordSource = 'pasted' | 'xlsx' | 'reading';
+export type WordSource = 'pasted' | 'xlsx' | 'pdf' | 'image' | 'reading';
 export type ArticleTopic = '随机' | '科技' | '文化' | '教育' | '生活' | '商业' | '自然';
 export type ModelProvider = 'deepseek' | 'qwen' | 'doubao';
 
@@ -41,6 +41,9 @@ export interface Question {
   question: string;
   options: [string, string, string, string];
   answer: 0 | 1 | 2 | 3;
+  questionZh?: string;
+  optionsZh?: [string, string, string, string];
+  evidence?: string;
 }
 
 export interface Article {

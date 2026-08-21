@@ -4,8 +4,20 @@ import { apiRequest } from '@/lib/apiClient';
 import type { Difficulty } from '@/types/domain';
 
 type ReviewStatus = 'candidate' | 'approved' | 'published' | 'archived';
-type AiReview = { verdict: 'pass' | 'needs_revision' | 'reject'; score: number; summary: string; strengths: string[]; issues: string[]; factualChecks: string[] };
-type ReviewQuestion = { question: string; options: string[]; answer: number };
+type AiReview = {
+  verdict: 'pass' | 'needs_revision' | 'reject';
+  score: number;
+  summary: string;
+  strengths: string[];
+  issues: string[];
+  factualChecks: string[];
+  scores?: { englishQuality: number; levelFit: number; questionQuality: number; factualReliability: number; originality: number };
+  questionChecks?: Array<{ index: number; answerSupported: boolean; evidenceFound: boolean; issue: string }>;
+  copyrightRisk?: { level: 'low' | 'medium' | 'high'; reason: string };
+  repairCount?: number;
+  deterministicIssues?: string[];
+};
+type ReviewQuestion = { question: string; options: string[]; answer: number; questionZh?: string; optionsZh?: string[]; evidence?: string };
 type ReviewArticle = {
   id: string;
   title: string;
@@ -38,6 +50,16 @@ function localDate() {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function reviewPassed(review?: AiReview) {
+  return Boolean(review
+    && review.verdict === 'pass'
+    && review.score >= 80
+    && (review.deterministicIssues?.length ?? 0) === 0
+    && review.copyrightRisk?.level !== 'high'
+    && (review.questionChecks?.length ?? 0) > 0
+    && review.questionChecks?.every((check) => check.answerSupported && check.evidenceFound));
 }
 
 export function AdminContentPage() {
@@ -94,8 +116,8 @@ export function AdminContentPage() {
     setSaving(true);
     setError('');
     try {
-      const data = await apiRequest<{ review: AiReview }>(`/api/admin/content/${encodeURIComponent(selected.id)}/ai-review`, { method: 'POST' });
-      setItems((current) => current.map((item) => item.id === selected.id ? { ...item, aiReview: data.review } : item));
+      await apiRequest<{ review: AiReview }>(`/api/admin/content/${encodeURIComponent(selected.id)}/ai-review`, { method: 'POST' });
+      await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'AI 审核失败');
     } finally {
@@ -110,9 +132,9 @@ export function AdminContentPage() {
     setError('');
     try {
       for (const item of pending) {
-        const data = await apiRequest<{ review: AiReview }>(`/api/admin/content/${encodeURIComponent(item.id)}/ai-review`, { method: 'POST' });
-        setItems((current) => current.map((currentItem) => currentItem.id === item.id ? { ...currentItem, aiReview: data.review } : currentItem));
+        await apiRequest<{ review: AiReview }>(`/api/admin/content/${encodeURIComponent(item.id)}/ai-review`, { method: 'POST' });
       }
+      await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : '批量 AI 审核未完成');
     } finally {
@@ -156,7 +178,7 @@ export function AdminContentPage() {
             <article className="rounded-lg border border-ink-200 bg-white p-5 sm:p-7">
               <div className="flex flex-col justify-between gap-4 border-b border-ink-200 pb-5 sm:flex-row sm:items-start">
                 <div><div className="mb-2 flex flex-wrap gap-2 text-xs font-semibold text-ink-400"><span>{selected.difficulty}</span><span>{selected.topic}</span><span>{selected.wordCount} words</span><span>{selected.estimatedMinutes} min</span></div><h2 className="text-2xl font-bold text-ink-950">{selected.title}</h2><p className="mt-2 text-sm leading-6 text-ink-500">{selected.summary}</p></div>
-                {selected.status === 'candidate' && <div className="flex shrink-0 flex-wrap justify-end gap-2"><button type="button" disabled={saving} onClick={() => void aiReview()} title="让 AI 预审文章" className="inline-flex h-9 items-center gap-2 rounded-full border border-brand-200 px-3 text-xs font-semibold text-brand-700 hover:bg-brand-50"><Sparkles size={15} /> AI 预审</button><button type="button" disabled={saving} onClick={() => void review('archive')} title="归档文章" className="icon-button text-red-600 hover:border-red-200 hover:bg-red-50"><Archive size={17} /></button><button type="button" disabled={saving} onClick={() => void review('approve')} title="确认加入文章池" className="inline-flex h-9 items-center gap-2 rounded-full bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"><Check size={15} /> 加入文章池</button></div>}
+                {selected.status === 'candidate' && <div className="flex shrink-0 flex-wrap justify-end gap-2"><button type="button" disabled={saving} onClick={() => void aiReview()} title="让 AI 预审文章" className="inline-flex h-9 items-center gap-2 rounded-full border border-brand-200 px-3 text-xs font-semibold text-brand-700 hover:bg-brand-50"><Sparkles size={15} /> AI 预审</button><button type="button" disabled={saving} onClick={() => void review('archive')} title="归档文章" className="icon-button text-red-600 hover:border-red-200 hover:bg-red-50"><Archive size={17} /></button><button type="button" disabled={saving || !reviewPassed(selected.aiReview)} onClick={() => void review('approve')} title={reviewPassed(selected.aiReview) ? '确认加入文章池' : 'AI 审核通过后才能加入文章池'} className="inline-flex h-9 items-center gap-2 rounded-full bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-40"><Check size={15} /> 加入文章池</button></div>}
                 {selected.status === 'approved' && <div className="flex shrink-0 flex-wrap justify-end gap-2"><button type="button" disabled={saving} onClick={() => void review('publish')} title="立即发布到所选日期的网页" className="inline-flex h-9 items-center gap-2 rounded-full bg-brand-600 px-3 text-xs font-semibold text-white hover:bg-brand-700"><Send size={15} /> 发布到网页</button><button type="button" disabled={saving} onClick={() => void review('candidate')} title="退回候选" className="icon-button"><RotateCcw size={17} /></button></div>}
                 {selected.status === 'published' && <button type="button" disabled={saving} onClick={() => void review('candidate')} title="退回候选" className="icon-button"><RotateCcw size={17} /></button>}
                 {selected.status === 'archived' && <button type="button" disabled={saving} onClick={() => void review('candidate')} title="恢复候选" className="icon-button"><RotateCcw size={17} /></button>}
@@ -164,10 +186,26 @@ export function AdminContentPage() {
 
               {selected.status === 'candidate' && <p className="mt-5 text-sm leading-6 text-ink-500">人工确认后先进入文章池；在“文章池”标签选择文章和日期后，可以立即发布，或等待定时轮换。</p>}
               {selected.status === 'approved' && <label className="mt-5 block max-w-xs"><span className="field-label">发布到网页的日期（同难度当天的旧文章会退回文章池）</span><input type="date" value={publishDate} onChange={(event) => setPublishDate(event.target.value)} className="field-control" /></label>}
-              {selected.aiReview && <section className="mt-5 rounded-lg border border-brand-100 bg-brand-50 p-4"><div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-brand-900">AI 预审结果</h3><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${selected.aiReview.verdict === 'pass' ? 'bg-emerald-100 text-emerald-700' : selected.aiReview.verdict === 'reject' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{selected.aiReview.verdict} · {selected.aiReview.score}/100</span></div><p className="mt-2 text-sm leading-6 text-ink-700">{selected.aiReview.summary}</p>{selected.aiReview.issues.length > 0 && <div className="mt-3 text-sm text-red-700"><strong>需要人工注意：</strong>{selected.aiReview.issues.join('；')}</div>}<div className="mt-3 text-xs leading-5 text-ink-500">事实核查：{selected.aiReview.factualChecks.join('；') || 'AI 未提出额外核查项'}</div></section>}
+              {selected.aiReview && <section className="mt-5 rounded-lg border border-brand-100 bg-brand-50 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-bold text-brand-900">AI 预审结果</h3><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${selected.aiReview.verdict === 'pass' ? 'bg-emerald-100 text-emerald-700' : selected.aiReview.verdict === 'reject' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{selected.aiReview.verdict} · {selected.aiReview.score}/100</span></div>
+                <p className="mt-2 text-sm leading-6 text-ink-700">{selected.aiReview.summary}</p>
+                {selected.aiReview.scores && <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">{[
+                  ['英文质量', selected.aiReview.scores.englishQuality],
+                  ['难度匹配', selected.aiReview.scores.levelFit],
+                  ['题目质量', selected.aiReview.scores.questionQuality],
+                  ['事实可靠', selected.aiReview.scores.factualReliability],
+                  ['原创程度', selected.aiReview.scores.originality],
+                ].map(([label, value]) => <div key={label} className="rounded border border-brand-100 bg-white px-2 py-2 text-center"><span className="block text-ink-400">{label}</span><strong className="mt-1 block text-sm text-ink-800">{value}</strong></div>)}</div>}
+                <div className="mt-3 flex flex-wrap gap-3 text-xs text-ink-500"><span>自动返修：{selected.aiReview.repairCount ?? 0} 次</span>{selected.aiReview.copyrightRisk && <span>版权风险：{selected.aiReview.copyrightRisk.level}</span>}</div>
+                {selected.aiReview.copyrightRisk && <p className="mt-2 text-xs leading-5 text-ink-500">版权判断：{selected.aiReview.copyrightRisk.reason}</p>}
+                {selected.aiReview.deterministicIssues && selected.aiReview.deterministicIssues.length > 0 && <div className="mt-3 text-sm text-red-700"><strong>程序校验未通过：</strong>{selected.aiReview.deterministicIssues.join('；')}</div>}
+                {selected.aiReview.issues.length > 0 && <div className="mt-3 text-sm text-red-700"><strong>需要人工注意：</strong>{selected.aiReview.issues.join('；')}</div>}
+                {selected.aiReview.questionChecks && <div className="mt-3 text-xs leading-5 text-ink-600"><strong>逐题证据：</strong>{selected.aiReview.questionChecks.map((check) => `第 ${check.index} 题 ${check.answerSupported && check.evidenceFound ? '通过' : check.issue || '未通过'}`).join('；')}</div>}
+                <div className="mt-3 text-xs leading-5 text-ink-500">事实核查：{selected.aiReview.factualChecks.join('；') || 'AI 未提出额外核查项'}</div>
+              </section>}
               <div className="mt-6 whitespace-pre-wrap text-[15px] leading-8 text-ink-800">{selected.content}</div>
 
-              <section className="mt-7 border-t border-ink-200 pt-5"><h3 className="text-sm font-bold text-ink-900">阅读题</h3><div className="mt-3 space-y-4">{selected.questions.map((question, index) => <div key={`${selected.id}-${index}`} className="rounded-lg bg-ink-50 p-4"><p className="font-medium text-ink-800">{index + 1}. {question.question}</p><ol className="mt-2 grid gap-1 text-sm text-ink-500 sm:grid-cols-2">{question.options.map((option, optionIndex) => <li key={option}>{String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.answer && <span className="ml-2 text-emerald-700">正确答案</span>}</li>)}</ol></div>)}</div></section>
+              <section className="mt-7 border-t border-ink-200 pt-5"><h3 className="text-sm font-bold text-ink-900">阅读题</h3><div className="mt-3 space-y-4">{selected.questions.map((question, index) => <div key={`${selected.id}-${index}`} className="rounded-lg bg-ink-50 p-4"><p className="font-medium text-ink-800">{index + 1}. {question.question}</p>{question.questionZh && <p className="mt-1 text-xs text-ink-400">{question.questionZh}</p>}<ol className="mt-2 grid gap-1 text-sm text-ink-500 sm:grid-cols-2">{question.options.map((option, optionIndex) => <li key={`${option}-${optionIndex}`}>{String.fromCharCode(65 + optionIndex)}. {option}{optionIndex === question.answer && <span className="ml-2 text-emerald-700">正确答案</span>}{question.optionsZh?.[optionIndex] && <span className="block text-xs text-ink-400">{question.optionsZh[optionIndex]}</span>}</li>)}</ol>{question.evidence && <p className="mt-3 border-l-2 border-brand-200 pl-3 text-xs leading-5 text-ink-500">证据：{question.evidence}</p>}</div>)}</div></section>
 
               <footer className="mt-7 border-t border-ink-200 pt-4 text-xs leading-6 text-ink-400"><p>来源：{selected.sourceTitle} <a href={selected.sourceUrl} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-1 text-brand-700 hover:underline">查看来源 <ExternalLink size={12} /></a></p><p>{selected.licenseNote}</p></footer>
             </article>

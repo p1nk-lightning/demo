@@ -5,6 +5,9 @@ export const QuestionSchema = z.object({
   question: z.string().min(1),
   options: z.tuple([z.string(), z.string(), z.string(), z.string()]),
   answer: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+  questionZh: z.string().min(1).optional(),
+  optionsZh: z.tuple([z.string(), z.string(), z.string(), z.string()]).optional(),
+  evidence: z.string().min(1).optional(),
 });
 
 export const ArticlePayloadSchema = z.object({

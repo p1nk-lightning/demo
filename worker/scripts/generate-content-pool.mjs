@@ -92,6 +92,27 @@ function averageSentenceLength(text) {
   const sentenceCount = Math.max(1, (text.match(/[.!?]+(?:\s|$)/g) || []).length);
   return wordCount(text) / sentenceCount;
 }
+function normalizedText(value = '') { return value.toLowerCase().replace(/[“”‘’]/g, '').replace(/\s+/g, ' ').trim(); }
+function hasCjk(value = '') { return /[\u3400-\u9fff]/u.test(value); }
+function validateQuestions(article, expectedCount) {
+  const issues = [];
+  if (!Array.isArray(article.questions) || article.questions.length !== expectedCount) return ['question_count'];
+  const questionKeys = new Set();
+  article.questions.forEach((question, index) => {
+    const prefix = `question_${index + 1}`;
+    if (!question || typeof question.question !== 'string' || !question.question.trim() || hasCjk(question.question)) issues.push(`${prefix}_english_stem`);
+    if (!Array.isArray(question.options) || question.options.length !== 4 || question.options.some((option) => typeof option !== 'string' || !option.trim() || hasCjk(option))) issues.push(`${prefix}_english_options`);
+    if (!Number.isInteger(question.answer) || question.answer < 0 || question.answer > 3) issues.push(`${prefix}_answer`);
+    if (typeof question.questionZh !== 'string' || !hasCjk(question.questionZh)) issues.push(`${prefix}_translation`);
+    if (!Array.isArray(question.optionsZh) || question.optionsZh.length !== 4 || question.optionsZh.some((option) => typeof option !== 'string' || !hasCjk(option))) issues.push(`${prefix}_option_translations`);
+    if (Array.isArray(question.options) && new Set(question.options.map(normalizedText)).size !== 4) issues.push(`${prefix}_duplicate_options`);
+    const key = normalizedText(question.question);
+    if (questionKeys.has(key)) issues.push(`${prefix}_duplicate_question`);
+    questionKeys.add(key);
+    if (typeof question.evidence !== 'string' || !normalizedText(article.article).includes(normalizedText(question.evidence))) issues.push(`${prefix}_evidence`);
+  });
+  return issues;
+}
 
 function execute(sqlText, label) {
   const tempDir = join(workerRoot, '..', 'tmp');
@@ -125,8 +146,8 @@ async function generate(material, index, key, model) {
     const response = await fetch('https://api.deepseek.com/chat/completions', {
       method: 'POST', headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
       signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify({ model, response_format: { type: 'json_object' }, temperature: 0.55, max_tokens: 2400, thinking: { type: 'disabled' }, messages: [
-        { role: 'system', content: `Create an original English reading article for Chinese learners. ${profile.prompt} Write ${desiredWords} English words. The article must contain ${profile.minWords}-${profile.maxWords} English words and average ${profile.minSentenceWords}-${profile.maxSentenceWords} words per sentence. Use the source only as factual context; never copy sentences. Do not invent facts beyond the lead. Return JSON only: {title, summary, article, questions:[{question,options:[4 strings],answer:0|1|2|3}]}. Include exactly ${profile.questionCount} Chinese multiple-choice questions that test main idea, detail, vocabulary in context, inference, or author purpose as appropriate.` },
+      body: JSON.stringify({ model, response_format: { type: 'json_object' }, temperature: 0.55, max_tokens: 4000, thinking: { type: 'disabled' }, messages: [
+        { role: 'system', content: `Create an original English reading article for Chinese learners. ${profile.prompt} Write ${desiredWords} English words. The article must contain ${profile.minWords}-${profile.maxWords} English words and average ${profile.minSentenceWords}-${profile.maxSentenceWords} words per sentence. Use at least three coherent paragraphs. Use the source only as factual context; never copy sentences. Do not invent facts beyond the lead. Return JSON only: {title, summary, article, questions:[{question,options:[4 strings],answer:0|1|2|3,questionZh,optionsZh:[4 strings],evidence}]}. Include exactly ${profile.questionCount} multiple-choice questions. Every question and all four options must be English; questionZh and optionsZh must be accurate Chinese translations. Evidence must be a short exact English quote copied from the article that supports the answer. Test main idea, detail, vocabulary in context, inference, or author purpose as appropriate.` },
         { role: 'user', content: JSON.stringify({ source: material.source.name, sourceTitle: material.title, sourceSummary: material.summary, sourceUrl: material.url, learningTopic: topic }) },
       ] }),
     });
@@ -143,10 +164,12 @@ async function generate(material, index, key, model) {
     }
     const words = wordCount(article.article || '');
     const sentenceLength = averageSentenceLength(article.article || '');
+    const questionIssues = validateQuestions(article, profile.questionCount);
     console.log(`Generated ${index + 1}: received ${words} words, ${sentenceLength.toFixed(1)} words per sentence`);
-    if (typeof article.title === 'string' && typeof article.summary === 'string' && Array.isArray(article.questions) && article.questions.length === profile.questionCount && words >= profile.minWords && words <= profile.maxWords && sentenceLength >= profile.minSentenceWords && sentenceLength <= profile.maxSentenceWords) {
+    if (typeof article.title === 'string' && article.title.trim() && !hasCjk(article.title) && typeof article.summary === 'string' && typeof article.article === 'string' && !hasCjk(article.article) && article.article.split(/\n\s*\n/).filter(Boolean).length >= 3 && questionIssues.length === 0 && words >= profile.minWords && words <= profile.maxWords && sentenceLength >= profile.minSentenceWords && sentenceLength <= profile.maxSentenceWords) {
       return { id: `content-v4-${String(index + 1).padStart(3, '0')}`, title: article.title, summary: article.summary, content: article.article, questions: article.questions, difficulty, topic, sourceId: material.source.id, sourceTitle: material.title, sourceUrl: material.url, coverUrl: fallbackCovers[topic], wordCount: words, estimatedMinutes: Math.max(3, Math.ceil(words / 150)) };
     }
+    if (questionIssues.length) console.log(`Generated ${index + 1}: question validation failed (${questionIssues.slice(0, 5).join(', ')})`);
   }
   throw new Error(`Unable to create a 400-1000 word article for ${material.title}`);
 }

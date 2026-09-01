@@ -9,7 +9,7 @@ import {
   getVocabularyItems,
   saveQuizResult,
 } from '@/lib/db';
-import { lookupDictMany } from '@/lib/dict';
+import { lookupDictMany, FALLBACK_MEANING } from '@/lib/dict';
 import {
   buildDefinitionQuestion,
   judgeSpelling,
@@ -47,7 +47,8 @@ export default function QuizPage() {
         const glossMap = await lookupDictMany(items.map((item) => item.normalized));
         const glosses = new Map<string, string>();
         for (const [word, entry] of glossMap) {
-          if (entry.meaningCN) glosses.set(word, entry.meaningCN);
+          // 排除"查无结果"的兜底标记,否则无释义词会混进题面(spec 禁止)
+          if (entry.meaningCN && entry.meaningCN !== FALLBACK_MEANING) glosses.set(word, entry.meaningCN);
         }
         const { picked: words, skippedNoGloss } = pickQuizWords(items, glosses, ROUND_SIZE);
         if (!alive) return;

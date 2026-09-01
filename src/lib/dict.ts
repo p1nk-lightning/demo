@@ -6,7 +6,8 @@ import { apiBaseUrl } from '@/lib/apiClient';
 
 const LS_DICT_PREFIX = 'dict:';
 const LRU_MAX = 500;
-const FALLBACK_MEANING = '（暂无释义，可稍后再试）';
+/** 查无结果时的兜底释义;测验等场景必须排除该标记(spec:无释义词不得作为题面) */
+export const FALLBACK_MEANING = '（暂无释义，可稍后再试）';
 
 function lsKey(word: string) {
   return LS_DICT_PREFIX + word.toLowerCase();

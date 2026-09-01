@@ -25,8 +25,10 @@ app.use('/api/*', async (context, next) => {
     'http://localhost:5174',
     'http://127.0.0.1:5174',
   ];
+  // FRONTEND_ORIGIN 服务生产域名;本地白名单 origin 永远放行,避免本地 dev 被生产配置压掉
+  const isLocalOrigin = localOrigins.includes(requestOrigin);
   return cors({
-  origin: context.env.FRONTEND_ORIGIN || (localOrigins.includes(requestOrigin) ? requestOrigin : 'http://localhost:5173'),
+  origin: isLocalOrigin ? requestOrigin : (context.env.FRONTEND_ORIGIN || 'http://localhost:5173'),
   allowHeaders: ['Content-Type'],
   allowMethods: ['GET', 'POST', 'OPTIONS'],
   credentials: true,

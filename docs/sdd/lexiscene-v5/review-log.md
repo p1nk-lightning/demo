@@ -71,3 +71,17 @@
 - **T18 审查**:四类边界文案齐;损坏文件原先裸抛 pdfjs/tesseract 英文错误 → 统一包装;0 词结果统一报"没有识别到任何单词";tesseract 以 mock 注入确定性验证包装逻辑(真实 OCR 冒烟归 T19/批 5)。
 - **AC 对照**:AC-006 达成(前后端闭环 + 集成测试);AC-007 达成;AC-008 达成(范围调整已述);AC-009 达成(行为验收 = 部署后 11 次连发,归批 6);AC-011 达成(grep 仅注释);AC-016 达成(四边界 + evidence 文档)。
 - **结论**:**通过 → 自动开启批 5(E2E 冒烟 + 版本 5.0.0 + README 收敛)**。
+
+## 批 5 审查(2026-09-01)
+
+覆盖 commit:29ff2e2(T20 版本+README)/ c846227(T19 E2E + 两处真修复)。
+
+- **gate(T21 六条全绿)**:FE tsc ✓ / FE build ✓ / worker tsc ✓ / worker vitest 37 ✓ / FE vitest 56 ✓ / Playwright E2E ✓
+- **T20 审查**:healthz 版本改为 import 根 package.json(单源,双端共享);version.test.ts 守卫 5.0.0;重写 README 时**保留了 V2 README 里的两段活操作流程**(ECDICT 灌装、内容池生成命令)——它们正是批 6 灌装要用的命令,不是历史。"词遇读"旧名 grep 零匹配(归档文档除外,有意保留)。
+- **T19 E2E 审查(价值兑现:抓出两处真 bug,均已修复)**:
+  1. **测验无释义词混入题面**(spec §5.2 明令禁止):`lookupDict` 查无结果时返回兜底文案"(暂无释义,可稍后再试)",QuizPage 只判空导致混入 → 导出 FALLBACK_MEANING 并精确排除。spec 禁令条款因此真正落地。
+  2. **本地 CORS 被 .dev.vars 的 FRONTEND_ORIGIN 压制**:origin 一配置就完全压过本地白名单,本地 dev 全挂 → 本地白名单 origin 永远放行,生产域名仍由 FRONTEND_ORIGIN 负责(安全面不变:放行的只有 4 个固定 localhost origin)。
+- **E2E 确定性设计**:词典释义由 beforeAll 用 wrangler d1 execute 预置 12 条到本地 D1(内置词典路径),测验不依赖外网抖动;webServer 自动拉起 vite + wrangler dev(reuse 现有进程)。连续 3 次运行全绿(4.7s/7.3s/6.9s),无 flaky。
+- **范围说明**:注册/邮箱验证/忘记密码的完整后端链路由 worker D1 集成测试覆盖(契约同级,E2E 不做真邮件);E2E 聚焦前端主链路(导入→读→答→测→看板)。
+- **AC 对照**:AC-017 达成(可重复冒烟 3/3);AC-014 达成(README 从零可跑、版本单源、旧名清零);AC-010 的版本断言部分就绪(线上验证归批 6)。
+- **结论**:**通过 → 移交批 6 发布**(T22 盘点备份 → T23 迁移灌装 → T24 部署合并;需用户 Cloudflare 授权参与)。

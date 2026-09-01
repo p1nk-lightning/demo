@@ -86,15 +86,15 @@
 
 ## 批 5(E2E 与收尾,2 线并行 + 1 串行)
 
-- [ ] T19 [P] e2e/smoke.spec.ts : E2E 冒烟主链路——SQL 预置已验证用户与今日文章(e2e/fixtures/article.sql);链路 = 登录 → 导入 12 词 → 读今日文章 → 答题 3/5 → 一轮测验 → /stats 见数据点;注册/邮箱验证/忘记密码的完整链路由 T13 的 worker 集成测试覆盖(fetchMock 读码,E2E 不做真邮件) -> AC-017
+- [x] T19 [P] e2e/smoke.spec.ts : E2E 冒烟主链路——SQL 预置已验证用户与今日文章(e2e/fixtures/article.sql);链路 = 登录 → 导入 12 词 → 读今日文章 → 答题 3/5 → 一轮测验 → /stats 见数据点;注册/邮箱验证/忘记密码的完整链路由 T13 的 worker 集成测试覆盖(fetchMock 读码,E2E 不做真邮件) -> AC-017
   - 文件集合: e2e/smoke.spec.ts, e2e/fixtures/(预置 SQL)
   - 前置: <- T13, T16, T17
   - 判据: `npx playwright test` 连续 3 次全绿;Turnstile 用官方测试密钥(dev 环境)
-- [ ] T20 [P] README.md : 版本统一与 README 重写——package.json 5.0.0、worker 健康检查 version 同步("5.0.0");新建 worker/src/version.test.ts 断言 healthz 版本 === package.json 版本;README 重写:产品一句话/当前状态/快速开始/部署(链接发布 runbook)/文档索引(指向 docs/history 与 docs/sdd);全库清除"词遇读"旧名 -> AC-014, AC-010
+- [x] T20 [P] README.md : 版本统一与 README 重写——package.json 5.0.0、worker 健康检查 version 同步("5.0.0");新建 worker/src/version.test.ts 断言 healthz 版本 === package.json 版本;README 重写:产品一句话/当前状态/快速开始/部署(链接发布 runbook)/文档索引(指向 docs/history 与 docs/sdd);全库清除"词遇读"旧名 -> AC-014, AC-010
   - 文件集合: README.md, package.json, worker/src/index.ts, worker/src/version.test.ts
   - 前置: <- T9
   - 判据: `grep -r 词遇读 . --exclude-dir=node_modules` 零匹配;`cd worker && npx vitest --run` 中 version.test.ts 断言两端版本一致;README"快速开始"命令在新目录照跑成功
-- [ ] T21 集成冒烟(本地全量) <- T19, T20 -> AC-012, AC-017, AC-001
+- [x] T21 集成冒烟(本地全量) <- T19, T20 -> AC-012, AC-017, AC-001
   - 判据: 一次性依次跑 `npm run typecheck` + `npm run build` + `cd worker && npx tsc --noEmit` + 根 `npx vitest --run` + `cd worker && npx vitest --run` + `npx playwright test`,六条退出码全 0
 
 ## 批 6(发布,串行,用户参与 Cloudflare 授权)

@@ -1,100 +1,62 @@
-export type Difficulty = 'CET4' | 'CET6' | '考研' | '雅思' | '托福';
+// 前端领域类型:跨端契约 re-export 自 shared/contracts(单一来源),
+// 仅前端本地的视图扩展字段(localId/ownerId/isFavorite 等)留在本文件。
+export type {
+  Difficulty,
+  WordSource,
+  ArticleTopic,
+  ModelProvider,
+  Question,
+  Word,
+  VocabularyListWire,
+  VocabularyItemWire,
+  ArticleWire,
+  UserProgressWire,
+  SyncPayload,
+  GenerateRequestWire,
+  DictionaryItem,
+} from '@shared/contracts';
+import type {
+  VocabularyListWire,
+  VocabularyItemWire,
+  ArticleWire,
+  UserProgressWire,
+  GenerateRequestWire,
+} from '@shared/contracts';
 
-export type WordSource = 'pasted' | 'xlsx' | 'pdf' | 'image' | 'reading';
-export type ArticleTopic = '随机' | '科技' | '文化' | '教育' | '生活' | '商业' | '自然';
-export type ModelProvider = 'deepseek' | 'qwen' | 'doubao';
-
-export interface Word {
-  id?: string;
-  text: string;
-  normalized: string;
-  source: WordSource;
-  mastered?: boolean;
-  addedAt: number;
-  updatedAt?: number;
-}
-
-export interface VocabularyList {
-  id: string;
+/** 词库列表的本地视图:云端线缆形 + Dexie/本地扩展字段。 */
+export interface VocabularyList extends VocabularyListWire {
   ownerId?: string | null;
-  name: string;
-  difficulty: Difficulty;
-  wordCount: number;
-  masteredCount: number;
-  createdAt: number;
-  updatedAt: number;
-  lastUsedAt?: number;
+  /** 现行库固定 2;保留字面量以兼容既有持久化数据。 */
   schemaVersion: 2;
-  deletedAt?: number;
 }
 
-export interface VocabularyItem extends Word {
+/** 词条目的本地视图:云端线缆形 + 本地扩展字段。 */
+export interface VocabularyItem extends VocabularyItemWire {
   id: string;
   ownerId?: string | null;
-  listId: string;
-  mastered: boolean;
-  updatedAt: number;
-  deletedAt?: number;
 }
 
-export interface Question {
-  question: string;
-  options: [string, string, string, string];
-  answer: 0 | 1 | 2 | 3;
-  questionZh?: string;
-  optionsZh?: [string, string, string, string];
-  evidence?: string;
-}
-
-export interface Article {
+/** 文章的本地视图:云端线缆形 + Dexie 主键与 UI 附属字段。 */
+export interface Article extends Omit<ArticleWire, 'id'> {
   id: string;
-  /** IndexedDB-only key; the stable cloud identity remains id. */
+  /** IndexedDB-only key;云端稳定身份仍是 id。 */
   localId?: string;
   ownerId?: string | null;
-  title: string;
-  article: string;
-  questions: Question[];
-  difficulty: Difficulty;
-  vocabHitIds: string[];
-  createdAt: number;
-  summary?: string;
-  topic?: ArticleTopic;
-  wordCount?: number;
-  estimatedMinutes?: number;
-  source?: 'generated' | 'daily';
   contentId?: string;
-  provider?: ModelProvider;
-  model?: string;
-  coverUrl?: string;
-  publishDate?: string;
   sourceTitle?: string;
   sourceUrl?: string;
   isFavorite?: boolean;
-  updatedAt?: number;
-  deletedAt?: number;
 }
 
-export interface UserProgress {
-  id: string;
+/** 阅读进度的本地视图:云端线缆形 + 本地扩展字段。 */
+export interface UserProgress extends UserProgressWire {
   ownerId?: string | null;
-  articleId: string;
-  answers: (number | null)[];
-  score: number;
-  completedAt: number;
-  updatedAt: number;
-  deletedAt?: number;
 }
 
-export interface GenerateRequest {
-  provider: ModelProvider;
-  difficulty: Difficulty;
-  sampleWords: string[];
-  wordCount?: number;
-  topic?: ArticleTopic;
-  questionCount?: 3 | 5;
-  retryHint?: string;
-}
+/** 生成请求的本地形:前端在发送前不一定填 default 字段。 */
+export type GenerateRequest = GenerateRequestWire;
 
+/** 词典查询条目(前端本地形,fetchedAt 为本地缓存时间戳)。 */
 export interface DictEntry {
   word: string;
   queriedWord?: string;

@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "^4.12.33"
+    "hono": "^4.12.33",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.1.2",

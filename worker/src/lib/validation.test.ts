@@ -134,8 +134,9 @@ describe('validatePublicArticle', () => {
 
   it('flags missing chinese translation and unfindable evidence', () => {
     const article = publicArticle();
+    // 题目翻译/证据允许为空(zod optional),但校验必须报出对应问题
     article.questions = article.questions.map((q, i) => i === 0
-      ? { ...q, questionZh: undefined, optionsZh: undefined, evidence: 'no such sentence anywhere' }
+      ? { ...q, questionZh: undefined as unknown as string, optionsZh: undefined as unknown as [string, string, string, string], evidence: 'no such sentence anywhere' }
       : q);
     const issues = validatePublicArticle(article, 'CET4').issues;
     expect(issues.some((issue) => issue.includes('缺少中文翻译'))).toBe(true);

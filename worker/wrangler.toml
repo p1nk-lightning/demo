@@ -23,6 +23,8 @@ migrations_dir = "migrations"
 crons = ["0 23 * * *"]
 
 # 请求级限流(Cloudflare 原生 binding,60 秒窗口;ADR-001:KV 最终一致不适合计数器)
-[[ratelimit.bindings]]
+# wrangler ≥4 的配置键是顶层 ratelimits 数组(旧写法 [[ratelimit.bindings]] 会被静默忽略)
+[[ratelimits]]
 name = "RATE_LIMITER"
 namespace_id = "1001"
+simple = { limit = 10, period = 60 }

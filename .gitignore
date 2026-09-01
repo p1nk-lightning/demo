@@ -18,6 +18,8 @@ dist/
 # Worker
 worker/dist/
 .wrangler/
+# 数据库导出含 password_hash / token_hash，严禁入库
+worker/backups/
 
 # 构建产物（避免误提交）
 *.tsbuildinfo

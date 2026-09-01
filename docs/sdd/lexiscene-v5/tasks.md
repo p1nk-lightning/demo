@@ -99,10 +99,13 @@
 
 ## 批 6(发布,串行,用户参与 Cloudflare 授权)
 
-- [ ] T22 docs/sdd/lexiscene-v5/release-inventory.md : 生产盘点与全表备份——wrangler d1 migrations list lexiscene --remote + 逐表 COUNT(users/sessions/dictionary_entries/dictionary_forms/content_articles/daily_articles/generation_usage)记入盘点文档;`wrangler d1 export lexiscene --remote --output backups/backup-<日期>.sql` 全表备份 -> AC-010
+- [x] T22 docs/sdd/lexiscene-v5/release-inventory.md : 生产盘点与全表备份——wrangler d1 migrations list lexiscene --remote + 逐表 COUNT(users/sessions/dictionary_entries/dictionary_forms/content_articles/daily_articles/generation_usage)记入盘点文档;`wrangler d1 export lexiscene --remote --output backups/backup-<日期>.sql` 全表备份 -> AC-010
   - 文件集合: docs/sdd/lexiscene-v5/release-inventory.md, backups/
   - 判据: 盘点文档含真实迁移状态与逐表行数;备份文件存在且体积 > 0;盘点结论决定 T23 的迁移清单(不按文档假设)
-- [ ] T23 docs/sdd/lexiscene-v5/release-log.md : 远程迁移核对与数据灌装 <- T22 -> AC-010
+  - 完成 2026-09-01:仅 0008 待应用;12 表行数入档;备份 142KB/17 表/用户数据抽查通过;backups/ 已 gitignore(含口令哈希)
+- [x] T23 docs/sdd/lexiscene-v5/release-inventory.md : 远程迁移核对与数据灌装 <- T22 -> AC-010
   - 判据: `wrangler d1 migrations apply lexiscene --remote` 后 `migrations list` 无待应用;词典导入后 `SELECT COUNT(*) FROM dictionary_entries` ≥ 本地基准;内容池远程重建后各难度 `/api/daily` 返回非空且 source=content_library;过程与命令输出记入 release-log.md
-- [ ] T24 版本级部署与线上冒烟 <- T23 -> AC-010
+  - 完成 2026-09-01:0008 已应用并验证;词典 21,000 词条/14,514 词形;6 篇合规长文过审入池,2026-09-01 每难度各 1 篇已排期;线上 /api/daily 5 篇 source=content_library(过程记入 release-inventory.md,实际产出为 inventory 而非独立 release-log)
+- [x] T24 版本级部署与线上冒烟 <- T23 -> AC-010
   - 判据: `wrangler versions upload` 新版本 → 线上 `/healthz` version=5.0.0、词典抽样有释义、daily 非空;一位朋友真实设备走通"注册→验证→导入→读今日文章→一轮测验"并记录;PASS 后 `git merge` 回 main 并推送;异常则 `wrangler rollback` 并记录;结果记入 docs/sdd/lexiscene-v5/release-log.md
+  - 完成 2026-09-01:versions upload + deploy@100(1779626a);healthz=5.0.0、daily 非空、词典有释义;顺带修复 RATE_LIMITER 配置静默失效([[ratelimits]] 新键)并以 14 连发 429 实测;代码已合 main 并推送;**朋友真机冒烟留待用户执行**(唯一未闭环项)

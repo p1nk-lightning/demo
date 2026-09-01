@@ -85,3 +85,16 @@
 - **范围说明**:注册/邮箱验证/忘记密码的完整后端链路由 worker D1 集成测试覆盖(契约同级,E2E 不做真邮件);E2E 聚焦前端主链路(导入→读→答→测→看板)。
 - **AC 对照**:AC-017 达成(可重复冒烟 3/3);AC-014 达成(README 从零可跑、版本单源、旧名清零);AC-010 的版本断言部分就绪(线上验证归批 6)。
 - **结论**:**通过 → 移交批 6 发布**(T22 盘点备份 → T23 迁移灌装 → T24 部署合并;需用户 Cloudflare 授权参与)。
+
+## 批 6 审查(2026-09-01,发布批次)
+
+覆盖:T22 盘点备份 / T23a 迁移 0008 / T23b 词典灌装 / T23c 内容池+每日文章 / T24 版本级部署+冒烟。全程 autonomous(用户指令"继续,需要我的时候再说")。
+- **gate**:FE tsc ✅ / FE vitest 56 ✅ / worker tsc ✅ / worker vitest 37 ✅ / versions deploy@100 ✅ / 线上冒烟 ✅(证据清单见 release-inventory.md §T24)
+- **对抗审查抓出的三个真问题**:
+  1. **RATE_LIMITER 从未生效**:wrangler 4.x 静默忽略旧配置键 `[[ratelimit.bindings]]`(每条命令的 "Unexpected fields" 警告是真实信号,此前批 5 把它当良性噪音记录了)。单测/集成测全部通过——因为测试环境是自造 binding,永远发现不了"生产配置被解析器丢弃"这一层。修复:按 wrangler 4.127 config-schema 改顶层 `[[ratelimits]]`(simple 10 次/60s),重新 upload+deploy@100,binding 表实证 `env.RATE_LIMITER (10 requests/60s)`,并以 14 连发 login 实测第 10 次起 429、约 60s 窗口恢复。
+  2. **备份文件差点入库**:`worker/backups/backup-2026-09-01.sql` 含 password_hash / token_hash 且未被 gitignore——在首次 commit 前被拦下,已加 .gitignore 并 `git check-ignore` 验证。
+  3. **发布门槛 vs 灌装数据的冲突**:30 篇旧短文(~110–140 词)永远过不了 `validatePublicArticle`(CET4 要求 400–500 词)——若图省事直接写 ai_review_json 放行就是伪造审核。处理:review-content.mjs 对确定性校验不过的**不送 LLM、不写审核记录**(保持候选),合规内容由 RSS+LLM 管线重新生成(6 篇全过审,每难度≥1 篇)。
+- **T23 审查**:迁移仅差 0008(早期文档假设过期,按实盘为准);远程 D1 compound SELECT 限制、wrangler 网络抖动(两次中断,脚本幂等重跑续传)均有记录;审核链逐字复刻 routes/content.ts(同提示词/同确定性校验/同通过判定/approve 语义一致),差异点(无管理员会话、脚本侧执行、无修复循环)在 release-inventory.md 声明。
+- **T24 审查**:版本级部署可回滚(上一版本 0ec7b159 留档);healthz=5.0.0、daily 5 篇、词典精确+词形还原均经 Vercel 代理验证;已知缺口如实入档(went 类不规则词形未中、旧短文待归档、DeepSeek 生成命中率 ~40%)。
+- **AC 对照**:AC-010 **基本达成**——备份✅、迁移✅、灌装✅、部署✅、线上冒烟✅、回滚路径✅;**唯"朋友真机冒烟"留待用户执行**(自动流程无法代替真人设备)。
+- **结论**:**通过(附 1 项用户待办)** → SDD 流水线批 1–6 全部完成;后续内容扩池用 `generate-content-pool.mjs --remote` + `review-content.mjs --remote` 即可,无需再动代码。

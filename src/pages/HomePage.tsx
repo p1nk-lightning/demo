@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
   BookOpen,
+  ChartLine,
   Clock3,
   LibraryBig,
   Sparkles,
+  Target,
 } from 'lucide-react';
 import { DAILY_ARTICLES } from '@/lib/dailyArticles';
 import { getDailyArticles } from '@/lib/content';
@@ -297,6 +299,20 @@ export function HomePage() {
             <span className="flex items-center gap-4">
               <span className="grid h-11 w-11 place-items-center rounded-lg bg-ink-100 text-ink-700"><BookOpen size={21} /></span>
               <span><strong className="block">阅读记录</strong><span className="mt-1 block text-sm text-ink-400">回顾文章与答题结果</span></span>
+            </span>
+            <ArrowRight size={18} className="text-ink-300 transition-transform group-hover:translate-x-1 group-hover:text-brand-600" />
+          </button>
+          <button onClick={() => navigate('/quiz')} className="group flex items-center justify-between rounded-lg border border-ink-200 bg-white p-6 text-left transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-card-hover">
+            <span className="flex items-center gap-4">
+              <span className="grid h-11 w-11 place-items-center rounded-lg bg-ink-100 text-ink-700"><Target size={21} /></span>
+              <span><strong className="block">词汇测验</strong><span className="mt-1 block text-sm text-ink-400">10 词一轮，答错的词再回来一次</span></span>
+            </span>
+            <ArrowRight size={18} className="text-ink-300 transition-transform group-hover:translate-x-1 group-hover:text-brand-600" />
+          </button>
+          <button onClick={() => navigate('/stats')} className="group flex items-center justify-between rounded-lg border border-ink-200 bg-white p-6 text-left transition-all hover:-translate-y-0.5 hover:border-brand-200 hover:shadow-card-hover">
+            <span className="flex items-center gap-4">
+              <span className="grid h-11 w-11 place-items-center rounded-lg bg-ink-100 text-ink-700"><ChartLine size={21} /></span>
+              <span><strong className="block">学习看板</strong><span className="mt-1 block text-sm text-ink-400">阅读量、复现率与得分趋势</span></span>
             </span>
             <ArrowRight size={18} className="text-ink-300 transition-transform group-hover:translate-x-1 group-hover:text-brand-600" />
           </button>

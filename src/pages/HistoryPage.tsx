@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowRight, BookOpen, CheckSquare, Clock3, Square, Trash2, X } from 'lucide-react';
 import { deleteReadingRecords, getProgress, listAllArticles } from '@/lib/storage';
 import { formatDateTime } from '@/lib/utils';
+import { CardSkeleton } from '@/components/ui';
 import type { Article, UserProgress } from '@/types/domain';
 
 interface HistoryItem {
@@ -103,7 +104,7 @@ export function HistoryPage() {
       {selectionMode && <div className="mb-5 flex flex-wrap items-center gap-3 border-y border-ink-200 bg-white px-4 py-3"><span className="text-sm font-semibold text-ink-700">已选择 {selectedIds.size} 篇</span><button type="button" disabled={!selectedIds.size} onClick={() => requestDelete(Array.from(selectedIds))} className="inline-flex h-9 items-center gap-2 rounded-full bg-red-600 px-3 text-xs font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40"><Trash2 size={15} /> 删除所选</button><button type="button" onClick={() => { setSelectionMode(false); setSelectedIds(new Set()); }} className="ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-xs font-semibold text-ink-500 hover:bg-ink-100"><X size={15} /> 退出管理</button></div>}
 
       {loading ? (
-        <p className="text-sm text-ink-400">正在读取本地记录…</p>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <CardSkeleton key={i} />)}</div>
       ) : items.length === 0 ? (
         <section className="rounded-lg border border-brand-100 bg-brand-50 px-6 py-16 text-center">
           <BookOpen className="mx-auto text-brand-500" size={34} />

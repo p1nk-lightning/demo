@@ -4,6 +4,7 @@ import { ArrowRight, BookOpen, Clock3, Star } from 'lucide-react';
 import { listFavoriteArticles } from '@/lib/content';
 import { saveArticle } from '@/lib/storage';
 import { formatDateTime } from '@/lib/utils';
+import { CardSkeleton } from '@/components/ui';
 import { useAuthStore } from '@/store/useAuthStore';
 import type { Article } from '@/types/domain';
 
@@ -39,7 +40,7 @@ export function FavoritesPage() {
         <h1 className="font-display text-4xl font-medium text-ink-950">我的收藏</h1>
         <p className="mt-3 text-ink-500">把想再次阅读的文章留在这里。</p>
       </div>
-      {loading ? <p className="text-sm text-ink-400">正在读取收藏...</p> : error ? <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : !items.length ? (
+      {loading ? <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((i) => <CardSkeleton key={i} />)}</div> : error ? <p className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p> : !items.length ? (
         <section className="rounded-lg border border-brand-100 bg-brand-50 px-6 py-16 text-center">
           <Star className="mx-auto text-brand-500" size={34} />
           <h2 className="mt-5 text-xl font-bold">还没有收藏文章</h2>

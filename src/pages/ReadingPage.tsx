@@ -67,7 +67,6 @@ export function ReadingPage() {
       const progress = await getProgress(loaded.id);
       if (progress) setSubmitted(progress);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [articleId]);
 
   const score = useMemo(() => article ? computeScore(answers, article.questions) : 0, [answers, article]);

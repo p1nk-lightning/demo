@@ -16,6 +16,20 @@ interface LocalSetting {
   value: unknown;
 }
 
+/** 一轮词汇测验的结果(AC-002/003/004/005;仅本地,不进云同步——ADR-007)。 */
+export interface QuizResult {
+  id: string;
+  ownerId: string | null;
+  mode: 'definition' | 'spelling';
+  /** 本轮题数(去重重练后的唯一词数) */
+  total: number;
+  /** 首答正确数(重练答对不计) */
+  correct: number;
+  /** 首答错误的词(normalized) */
+  wrongNormalized: string[];
+  completedAt: number;
+}
+
 class LexiSceneDatabase extends Dexie {
   vocabLists!: EntityTable<VocabularyList, 'id'>;
   vocabItems!: EntityTable<VocabularyItem, 'id'>;
@@ -23,6 +37,7 @@ class LexiSceneDatabase extends Dexie {
   articleRecords!: EntityTable<Article, 'localId'>;
   progress!: EntityTable<UserProgress, 'articleId'>;
   progressRecords!: EntityTable<UserProgress, 'id'>;
+  quizResults!: EntityTable<QuizResult, 'id'>;
   settings!: EntityTable<LocalSetting, 'key'>;
 
   constructor() {
@@ -77,6 +92,16 @@ class LexiSceneDatabase extends Dexie {
       progress: 'articleId, ownerId, completedAt',
       progressRecords: 'id, ownerId, articleId, updatedAt, [ownerId+articleId]',
       apiProfiles: null,
+      settings: 'key',
+    });
+    this.version(5).stores({
+      vocabLists: 'id, ownerId, updatedAt, lastUsedAt, difficulty',
+      vocabItems: 'id, ownerId, listId, normalized, mastered, [listId+normalized]',
+      articles: 'id, ownerId, createdAt, updatedAt, difficulty, source, publishDate',
+      articleRecords: 'localId, id, ownerId, createdAt, updatedAt, difficulty, source, publishDate',
+      progress: 'articleId, ownerId, completedAt',
+      progressRecords: 'id, ownerId, articleId, updatedAt, [ownerId+articleId]',
+      quizResults: 'id, ownerId, completedAt, mode',
       settings: 'key',
     });
   }
@@ -222,8 +247,21 @@ export async function setActiveVocabularyListId(id: string) {
   scheduleSync(getLocalOwnerId());
 }
 
-export async function getSelectedModelProvider(): Promise<ModelProvider> {
-  const setting = await db.settings.get(scopedKey('selectedModelProvider'));
+export async function saveQuizResult(result: Omit<QuizResult, 'ownerId'>) {
+  const record: QuizResult = { ...result, ownerId: getLocalOwnerId() };
+  await db.quizResults.put(record);
+  return record;
+}
+
+export async function listQuizResultsByRange(fromMs: number, toMs: number) {
+  const ownerId = getLocalOwnerId();
+  const rows = await db.quizResults
+    .where('completedAt').between(fromMs, toMs, true, true)
+    .toArray();
+  return rows.filter((row) => isOwnedBy(row, ownerId)).sort((a, b) => a.completedAt - b.completedAt);
+}
+
+export async function getSelectedModelProvider(): Promise<ModelProvider> {  const setting = await db.settings.get(scopedKey('selectedModelProvider'));
   return setting?.value === 'qwen' || setting?.value === 'doubao' || setting?.value === 'deepseek'
     ? setting.value
     : 'deepseek';

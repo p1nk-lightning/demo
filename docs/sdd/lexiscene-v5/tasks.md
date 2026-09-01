@@ -1,4 +1,4 @@
-# LexiScene V5 · 原子任务清单(tasks.md)
+﻿# LexiScene V5 · 原子任务清单(tasks.md)
 
 > source: spec.md v1.1(17 条 AC)+ plan.md ADR-001~007
 > 纪律:单一动作 · 精确文件路径 · 可跑判据 · 零占位。`[P]` = 文件集合与同批其他线零交集,可并行。
@@ -6,16 +6,16 @@
 
 ## 批 1(地基,4 线并行)
 
-- [ ] T1 [P] worker/src/lib/wordstats.ts : 从 index.ts 纯移动提取无副作用函数——wordstats(englishWordCount/countVocabHits/normalizedText/hasCjk/minimumHits)、time(chinaDayKey/chinaDayNumber/isRotationDay)、validation(validateGeneratedArticle/validatePublicArticle + 难度限值表)、schemas(全部 zod schema);index.ts 改为 import,零逻辑变化 -> AC-012, AC-001
+- [x] T1 [P] worker/src/lib/wordstats.ts : 从 index.ts 纯移动提取无副作用函数——wordstats(englishWordCount/countVocabHits/normalizedText/hasCjk/minimumHits)、time(chinaDayKey/chinaDayNumber/isRotationDay)、validation(validateGeneratedArticle/validatePublicArticle + 难度限值表)、schemas(全部 zod schema);index.ts 改为 import,零逻辑变化 -> AC-012, AC-001
   - 文件集合: worker/src/lib/wordstats.ts, worker/src/lib/time.ts, worker/src/lib/validation.ts, worker/src/schemas.ts, worker/src/index.ts
   - 判据: `cd worker && npx tsc --noEmit` 退出码 0;根 `npm run typecheck` 退出码 0;`git diff` 对 index.ts 仅删定义+加 import(无逻辑改动)
-- [ ] T2 [P] package.json : 前端测试与依赖地基——devDeps 增 vitest@^4.1、jsdom@^30、@testing-library/react@^16.3.3、@testing-library/dom@^10、@testing-library/jest-dom@^7、fake-indexeddb@^6.2.5、recharts@^3.10.1、react-error-boundary@^6.1.4、@playwright/test@^1.62;新建 vitest.config.ts(jsdom 环境 + setupFiles)、src/test/setup.ts(fake-indexeddb/auto + jest-dom)、playwright.config.ts(测试仅认 e2e/*.spec.ts)、e2e/ 目录;.gitignore加 playwright-artifacts -> AC-001
+- [x] T2 [P] package.json : 前端测试与依赖地基——devDeps 增 vitest@^4.1、jsdom@^30、@testing-library/react@^16.3.3、@testing-library/dom@^10、@testing-library/jest-dom@^7、fake-indexeddb@^6.2.5、recharts@^3.10.1、react-error-boundary@^6.1.4、@playwright/test@^1.62;新建 vitest.config.ts(jsdom 环境 + setupFiles)、src/test/setup.ts(fake-indexeddb/auto + jest-dom)、playwright.config.ts(测试仅认 e2e/*.spec.ts)、e2e/ 目录;.gitignore加 playwright-artifacts -> AC-001
   - 文件集合: package.json, package-lock.json, vitest.config.ts, src/test/setup.ts, playwright.config.ts, e2e/.gitkeep, .gitignore
   - 判据: `npx vitest --run --passWithNoTests` 退出码 0;`npx playwright install chromium` 成功且 `npx playwright --version` 输出版本
-- [ ] T3 [P] docs/history/README.md : 过程文档归档与死文件清理——Prd.md、V2/V3/V4 的 handoff+log 共 7 份移入 docs/history/(Prd.md 标注"V1 原始 PRD,已被 V3/V4 演进");新建归档索引;删根目录 vite.config.js 与 vite.config.d.ts(tsc 误编译产物);tmp/ 测试脚本删、reset-admin-password.ps1 移 docs/history/ops/ -> AC-014, AC-015
+- [x] T3 [P] docs/history/README.md : 过程文档归档与死文件清理——Prd.md、V2/V3/V4 的 handoff+log 共 7 份移入 docs/history/(Prd.md 标注"V1 原始 PRD,已被 V3/V4 演进");新建归档索引;删根目录 vite.config.js 与 vite.config.d.ts(tsc 误编译产物);tmp/ 测试脚本删、reset-admin-password.ps1 移 docs/history/ops/ -> AC-014, AC-015
   - 文件集合: docs/history/(新建含索引 README), 根目录 7 份过程文档(移动), vite.config.js, vite.config.d.ts, tmp/
   - 判据: 根目录仅剩活跃文件(README/package.json/配置);`npm run typecheck` 与 `npm run build` 退出码 0(证明删产物无影响);`git status` 仅移动+删除
-- [ ] T4 [P] worker/package.json : Worker 测试配置——devDeps 增 vitest@^4.1、@cloudflare/vitest-plugin@^1.1.2;新建 worker/vitest.config.ts(cloudflareTest 挂 wrangler configPath,miniflare 提供本地 D1 绑定) -> AC-001
+- [x] T4 [P] worker/package.json : Worker 测试配置——devDeps 增 vitest@^4.1、@cloudflare/vitest-plugin@^1.1.2;新建 worker/vitest.config.ts(cloudflareTest 挂 wrangler configPath,miniflare 提供本地 D1 绑定) -> AC-001
   - 文件集合: worker/package.json, worker/package-lock.json, worker/vitest.config.ts
   - 判据: `cd worker && npx vitest --run --passWithNoTests` 退出码 0
 

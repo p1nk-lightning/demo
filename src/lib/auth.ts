@@ -48,3 +48,21 @@ export function verifyEmail(code: string) {
 export function resendVerification() {
   return apiRequest<{ ok: true; alreadyVerified?: boolean }>('/api/auth/resend-verification', { method: 'POST' });
 }
+
+/** 忘记密码:无论邮箱是否注册,后端都返回统一文案(防枚举,AC-006)。 */
+export function requestPasswordReset(email: string) {
+  return apiRequest<{ ok: true }>('/api/auth/forgot-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+}
+
+/** 重置密码:成功后所有已登录会话被吊销,需用新密码重新登录。 */
+export function resetPassword(email: string, code: string, newPassword: string) {
+  return apiRequest<{ ok: true }>('/api/auth/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code, newPassword }),
+  });
+}

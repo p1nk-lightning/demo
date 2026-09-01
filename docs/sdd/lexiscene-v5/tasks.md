@@ -21,19 +21,19 @@
 
 ## 批 2(测试 + 单源,4 线并行)
 
-- [ ] T5 [P] worker/src/lib/wordstats.test.ts : Worker 纯函数单测——wordstats(英文词数/命中统计边界:标点、大小写、词边界)、time(北京日界跨天、轮换日奇偶)、validation(词数越界/题数不符/中文混入/证据句缺失/重复选项各触发对应 issue;修复重试输入用非 JSON 脏数据) -> AC-001
+- [x] T5 [P] worker/src/lib/wordstats.test.ts : Worker 纯函数单测——wordstats(英文词数/命中统计边界:标点、大小写、词边界)、time(北京日界跨天、轮换日奇偶)、validation(词数越界/题数不符/中文混入/证据句缺失/重复选项各触发对应 issue;修复重试输入用非 JSON 脏数据) -> AC-001
   - 文件集合: worker/src/lib/wordstats.test.ts, worker/src/lib/time.test.ts, worker/src/lib/validation.test.ts
   - 前置: <- T1, T4
   - 判据: `cd worker && npx vitest --run` 全绿,每模块 ≥1 正常路径 + ≥1 脏输入用例
-- [ ] T6 [P] src/lib/vocab.test.ts : 前端现有模块单测——vocab(TXT/xlsx 词提取、归一化去标点、去重)、highlight(分词与词表匹配)、schemas(zod 拒绝脏数据)、utils、sync(乱序竞态:mock apiRequest + fake timers 验证 inFlight 去重与 rerun 补跑) -> AC-001
+- [x] T6 [P] src/lib/vocab.test.ts : 前端现有模块单测——vocab(TXT/xlsx 词提取、归一化去标点、去重)、highlight(分词与词表匹配)、schemas(zod 拒绝脏数据)、utils、sync(乱序竞态:mock apiRequest + fake timers 验证 inFlight 去重与 rerun 补跑) -> AC-001
   - 文件集合: src/lib/vocab.test.ts, src/lib/highlight.test.ts, src/lib/schemas.test.ts, src/lib/utils.test.ts, src/lib/sync.test.ts
   - 前置: <- T2
   - 判据: `npx vitest --run` 全绿;sync 竞态用例覆盖"同用户并发同步只跑一次 + 完成后有新变更自动补跑"
-- [ ] T7 [P] shared/contracts.ts : 双端契约单源——Difficulty/WordSource/ArticleTopic/ModelProvider/Question/Word/VocabularyList/VocabularyItem/Article(同步线缆格式)/UserProgress/SyncPayload/GenerateRequest/GenerateResponse/DictItem 全部 zod schema + z.infer;worker/src/schemas.ts 改为从 shared import 并 re-export;src/types/domain.ts 改 re-export + 保留前端本地扩展(localId/isFavorite 等);两端 tsconfig.json 与 vite.config.ts 增 @shared 路径 -> AC-013
+- [x] T7 [P] shared/contracts.ts : 双端契约单源——Difficulty/WordSource/ArticleTopic/ModelProvider/Question/Word/VocabularyList/VocabularyItem/Article(同步线缆格式)/UserProgress/SyncPayload/GenerateRequest/GenerateResponse/DictItem 全部 zod schema + z.infer;worker/src/schemas.ts 改为从 shared import 并 re-export;src/types/domain.ts 改 re-export + 保留前端本地扩展(localId/isFavorite 等);两端 tsconfig.json 与 vite.config.ts 增 @shared 路径 -> AC-013
   - 文件集合: shared/contracts.ts, worker/src/schemas.ts, src/types/domain.ts, tsconfig.json, vite.config.ts, worker/tsconfig.json
   - 前置: <- T1
   - 判据: 根与 worker `tsc --noEmit` 双绿;`Question`/`UserProgress` 字段级定义全库 grep 仅 shared/contracts.ts 一处
-- [ ] T8 [P] src/lib/db.ts : Dexie v5 迁移 + 测验存取——version(5) 增 quizResults 表(id/ownerId/completedAt/mode 索引);新增 saveQuizResult/listQuizResultsByRange;db.test.ts(fake-indexeddb)覆盖 v4 老库升级打开不报错、quizResults 写读、按 completedAt 范围查询;确认 apiProfiles 在 version stores 之外零活引用 -> AC-004, AC-015
+- [x] T8 [P] src/lib/db.ts : Dexie v5 迁移 + 测验存取——version(5) 增 quizResults 表(id/ownerId/completedAt/mode 索引);新增 saveQuizResult/listQuizResultsByRange;db.test.ts(fake-indexeddb)覆盖 v4 老库升级打开不报错、quizResults 写读、按 completedAt 范围查询;确认 apiProfiles 在 version stores 之外零活引用 -> AC-004, AC-015
   - 文件集合: src/lib/db.ts, src/lib/db.test.ts
   - 前置: <- T2
   - 判据: `npx vitest --run` 全绿(含迁移用例);`grep -r apiProfiles src/` 仅命中 db.ts 的 version(1)-(4) stores 行

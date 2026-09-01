@@ -2,6 +2,7 @@
 // 路由/认证/LLM/内容池的实现分别在 routes/ 与 lib/ 下。
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import appPackage from '../../package.json';
 import type { Env } from './types';
 import authRoutes from './routes/auth';
 import syncRoutes from './routes/sync';
@@ -10,6 +11,9 @@ import contentRoutes from './routes/content';
 import generateRoutes from './routes/generate';
 import { rotateContentPool } from './lib/content-store';
 import { chinaDayKey } from './lib/time';
+
+// 版本号单一来源 = 根 package.json(与前端共享,version.test.ts 断言一致性)
+const APP_VERSION: string = appPackage.version;
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -29,7 +33,7 @@ app.use('/api/*', async (context, next) => {
   })(context, next);
 });
 
-app.get('/healthz', (context) => context.json({ ok: true, product: 'LexiScene', version: 2 }));
+app.get('/healthz', (context) => context.json({ ok: true, product: 'LexiScene', version: APP_VERSION }));
 
 app.route('/', authRoutes);
 app.route('/', syncRoutes);

@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { ErrorBoundary } from 'react-error-boundary';
 import { AppShell } from '@/components/layout/AppShell';
+import { AppErrorFallback } from '@/components/AppErrorFallback';
 import { ToastHost } from '@/components/ui/Toast';
 import { useAuthStore } from '@/store/useAuthStore';
 import { setLocalOwnerId } from '@/lib/localScope';
@@ -17,6 +19,10 @@ const ImportPage = lazy(() => import('@/pages/DocumentImportPage').then((module)
 const AuthPage = lazy(() => import('@/pages/AuthPage').then((module) => ({ default: module.AuthPage })));
 const VerifyEmailPage = lazy(() => import('@/pages/VerifyEmailPage').then((module) => ({ default: module.VerifyEmailPage })));
 const AdminContentPage = lazy(() => import('@/pages/AdminContentPage').then((module) => ({ default: module.AdminContentPage })));
+const QuizPage = lazy(() => import('@/pages/QuizPage'));
+const StatsPage = lazy(() => import('@/pages/StatsPage'));
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'));
 
 function PageLoader() {
   return (
@@ -33,6 +39,17 @@ function AdminRoute() {
   if (!user) return <Navigate to="/login" replace />;
   if (!user.isAdmin) return <Navigate to="/" replace />;
   return <AdminContentPage />;
+}
+
+function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
+  return (
+    <ErrorBoundary
+      FallbackComponent={AppErrorFallback}
+      onReset={() => window.location.assign('#/')}
+    >
+      {children}
+    </ErrorBoundary>
+  );
 }
 
 export function App() {
@@ -68,25 +85,31 @@ export function App() {
 
   return (
     <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <ToastHost />
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          <Route path="/login" element={<AuthPage key="login" mode="login" />} />
-          <Route path="/register" element={<AuthPage key="register" mode="register" />} />
-          <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route element={<AppShell />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/library" element={<LibraryPage />} />
-            <Route path="/library/import" element={<ImportPage />} />
-            <Route path="/reading/:articleId" element={<ReadingPage />} />
-            <Route path="/history" element={<HistoryPage />} />
-            <Route path="/favorites" element={<FavoritesPage />} />
-            <Route path="/admin/content" element={<AdminRoute />} />
-            <Route path="/vocab" element={<Navigate to="/library" replace />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
+      <ErrorBoundary FallbackComponent={AppErrorFallback} onReset={() => window.location.assign('#/')}>
+        <ToastHost />
+        <Suspense fallback={<PageLoader />}>
+          <Routes>
+            <Route path="/login" element={<AuthPage key="login" mode="login" />} />
+            <Route path="/register" element={<AuthPage key="register" mode="register" />} />
+            <Route path="/verify-email" element={<VerifyEmailPage />} />
+            <Route path="/forgot-password" element={<RouteErrorBoundary><ForgotPasswordPage /></RouteErrorBoundary>} />
+            <Route path="/reset-password" element={<RouteErrorBoundary><ResetPasswordPage /></RouteErrorBoundary>} />
+            <Route element={<AppShell />}>
+              <Route path="/" element={<RouteErrorBoundary><HomePage /></RouteErrorBoundary>} />
+              <Route path="/library" element={<RouteErrorBoundary><LibraryPage /></RouteErrorBoundary>} />
+              <Route path="/library/import" element={<RouteErrorBoundary><ImportPage /></RouteErrorBoundary>} />
+              <Route path="/reading/:articleId" element={<RouteErrorBoundary><ReadingPage /></RouteErrorBoundary>} />
+              <Route path="/history" element={<RouteErrorBoundary><HistoryPage /></RouteErrorBoundary>} />
+              <Route path="/favorites" element={<RouteErrorBoundary><FavoritesPage /></RouteErrorBoundary>} />
+              <Route path="/quiz" element={<RouteErrorBoundary><QuizPage /></RouteErrorBoundary>} />
+              <Route path="/stats" element={<RouteErrorBoundary><StatsPage /></RouteErrorBoundary>} />
+              <Route path="/admin/content" element={<RouteErrorBoundary><AdminRoute /></RouteErrorBoundary>} />
+              <Route path="/vocab" element={<Navigate to="/library" replace />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </HashRouter>
   );
 }

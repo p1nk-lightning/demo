@@ -109,6 +109,11 @@ export function AuthPage({ mode }: AuthPageProps) {
             {isRegister ? '已有账号？' : '还没有账号？'}
             <Link className="ml-1 font-semibold text-brand-700 hover:text-brand-800" to={isRegister ? '/login' : '/register'}>{isRegister ? '去登录' : '创建账号'}</Link>
           </p>
+          {!isRegister && (
+            <p className="mt-2 text-center text-sm text-ink-500">
+              <Link className="text-brand-600 hover:underline" to="/forgot-password">忘记密码？</Link>
+            </p>
+          )}
         </section>
       </main>
     </div>

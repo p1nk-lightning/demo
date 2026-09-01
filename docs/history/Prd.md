@@ -1,3 +1,5 @@
+> [已归档 2026-09-01] V1 原始 PRD——产品已演进至 V3/V4(账号/云同步/内容池),现行 spec 见 docs/sdd/lexiscene-v5/spec.md
+
 # PRD — 英语阅读巩固训练工具
 
 **产品暂定名**：Readai / 词遇读

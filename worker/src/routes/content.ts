@@ -218,14 +218,13 @@ app.get('/api/daily', async (context) => {
         source: 'content_library',
       });
     }
-  } catch {
-    // Older local databases may not have migration 0005 yet; use the legacy table below.
+    // 新表无数据:显式记录(不再静默回退 legacy daily_articles 表,AC-011)
+    console.error('/api/daily returned no published articles', { date, difficulty: difficulty ?? 'all' });
+    return context.json({ items: [], source: 'content_library' });
+  } catch (error) {
+    console.error('/api/daily query failed', error instanceof Error ? error.message : error);
+    return context.json({ error: '今日文章获取失败，请稍后再试' }, 500);
   }
-  const query = context.env.DB.prepare(
-    'SELECT * FROM daily_articles WHERE publish_date = ? AND (? IS NULL OR difficulty = ?) ORDER BY difficulty',
-  ).bind(date, difficulty || null, difficulty || null);
-  const result = await query.all();
-  return context.json({ items: result.results, source: 'd1' });
 });
 
 export default app;

@@ -29,14 +29,14 @@ import { env, SELF } from 'cloudflare:test';
 beforeAll(async () => {
   // 测试库建表:schema 由 vitest.config 注入 TEST_SCHEMA binding。
   // 先删注释行再按分号拆,避免注释内分号截断语句。
-  const schema = (env as typeof env & { TEST_SCHEMA: string }).TEST_SCHEMA;
-  const withoutComments = schema
+  const bindings = env as typeof env & { TEST_SCHEMA: string; DB: D1Database };
+  const withoutComments = bindings.TEST_SCHEMA
     .split('\n')
-    .filter((line) => !line.trim().startsWith('--'))
+    .filter((line: string) => !line.trim().startsWith('--'))
     .join('\n');
-  const statements = withoutComments.split(';').map((statement) => statement.trim()).filter(Boolean);
+  const statements = withoutComments.split(';').map((statement: string) => statement.trim()).filter(Boolean);
   for (const statement of statements) {
-    await env.DB.prepare(statement).run();
+    await bindings.DB.prepare(statement).run();
   }
 });
 

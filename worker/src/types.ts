@@ -14,7 +14,11 @@ export interface Env {
   TURNSTILE_SECRET_KEY?: string;
   RESEND_API_KEY?: string;
   EMAIL_FROM?: string;
+  /** @deprecated KV 限流已废弃(最终一致不适合计数器,ADR-001),由 RATE_LIMITER 取代;仅保留至下个清理批次 */
   RL?: KVNamespace;
+  RATE_LIMITER?: {
+    limit(key: { key: string }): Promise<{ success: boolean }>;
+  };
   DB?: D1Database;
   FRONTEND_ORIGIN?: string;
 }

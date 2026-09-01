@@ -95,6 +95,14 @@
 - 旧短文 content-001–030 留在候选池(无审核记录),后续可在管理界面归档
 - DeepSeek 生成命中率低(~40%),内容扩池时建议一次跑 10+ 并对失败 offset 重试
 
+## 前端部署核对(2026-09-02)
+
+推送 main 后 Vercel 自动触发构建并部署了新前端。核对结论:
+- 旧 index.html 曾短暂引用已失效的 chunk(404,疑为 Vercel 缓存/构建竞态);带 no-cache 复核后 HTML 已指向新 bundle `index-Da_D7kRu.js`,配套 CSS 200。
+- 新 bundle 含 v5 路由(QuizPage/StatsPage/ForgotPasswordPage/ResetPasswordPage),QuizPage chunk 实证包含"暂无释义"兜底排除逻辑(v5 行为)。
+- 经代理的 /api/daily、/api/dictionary 持续 200。
+- 教训:Vercel 部署后 30 秒内的边缘缓存可能短暂持有过期 HTML(引用已删除的旧 chunk);今后部署后用 no-cache 请求复核一次再通知朋友冒烟。
+
 ## 待办(需要用户)
 
 - AC-010 朋友真机冒烟:注册 → 登录 → 每日阅读 → 点词 → 测验 → 看板 → 忘记密码全链路在真实手机上走一遍

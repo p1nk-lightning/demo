@@ -54,3 +54,20 @@
   - AC-012(拆分行为不变):**达成**(入口 50 行;28 个既有测试拆分前后同绿;dry-run 过)
 - **遗留到批 4**:四条新路由未注册进 App.tsx(计划归 T16);忘记密码后端(批 4 T13)。
 - **结论**:**通过 → 自动开启批 4**。
+
+## 批 4 审查(2026-09-01)
+
+覆盖 commit:dd1470e(T16 路由+ErrorBoundary)/ f147d93(T13 忘记密码后端)/ 1b86c72(T14 daily 收敛)/ 9b66755(T15 限流 binding)/ 1ce4687(T17 空态+首页卡)/ 4e720ab(T18 导入错误路径)。
+
+- **gate**:worker tsc ✓ / worker vitest 36 ✓ / FE tsc ✓ / FE vitest 56 ✓ / FE build ✓
+- **T16 审查**:全局 + 路由级双层 ErrorBoundary;fallback 测试三态(生产无堆栈/dev 有/边界捕获);RTL 自动清理依赖 globals,测试文件显式 cleanup 修复堆叠误报。登录页忘记密码入口已接。
+- **T13 审查(集成测试抓出两处真 bug,审出即修)**:
+  1. **防枚举文案不一致**:未注册邮箱 reset 返回"验证码已失效"而注册错码返回"验证码不对或已过期"——按契约统一为后者(并覆盖"注册但无未用码"分支)。
+  2. 测试 stub 只截 input 丢 init,Resend 请求体读不到——测试侧修复。
+  3. 迁移注入:插件不自动应用 wrangler 迁移,方案 = vitest.config(Node 侧)读 migrations 拼 schema → miniflare binding `TEST_SCHEMA` → 测试 setup 先删注释行再按分号拆逐语句执行(注释内分号会截断语句,顺序敏感,已留注释)。
+  4. 限流跨用例累积 → 每用例独立 cf-connecting-ip(不改产品代码)。
+- **T15 审查**:binding 判定直通 + 无 binding 内存回退(10/min、65s 窗口过期测试覆盖);`RL` 字段保留一个周期标注 deprecated;日级配额职责边界在文件头注明。
+- **T17 审查(范围调整,理由留痕)**:History/Favorites/Library 已有带行动按钮的品牌化空态,重写为 EmptyState 组件属零价值 churn——保留;实际接入 = 首页两卡 + 两页裸文本加载换 CardSkeleton + Quiz/Stats 页已用 EmptyState/Spinner(零引用债消除)。eslint-disable 死注释已删。
+- **T18 审查**:四类边界文案齐;损坏文件原先裸抛 pdfjs/tesseract 英文错误 → 统一包装;0 词结果统一报"没有识别到任何单词";tesseract 以 mock 注入确定性验证包装逻辑(真实 OCR 冒烟归 T19/批 5)。
+- **AC 对照**:AC-006 达成(前后端闭环 + 集成测试);AC-007 达成;AC-008 达成(范围调整已述);AC-009 达成(行为验收 = 部署后 11 次连发,归批 6);AC-011 达成(grep 仅注释);AC-016 达成(四边界 + evidence 文档)。
+- **结论**:**通过 → 自动开启批 5(E2E 冒烟 + 版本 5.0.0 + README 收敛)**。

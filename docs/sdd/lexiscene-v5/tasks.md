@@ -59,27 +59,27 @@
 
 ## 批 4(功能后端 + 集成界面,6 线并行)
 
-- [ ] T13 [P] worker/migrations/0008_password_reset_tokens.sql : 忘记密码后端——建表(结构见 data-model.md §1)+ routes/auth.ts 增 POST /api/auth/forgot-password 与 /api/auth/reset-password(逻辑按 contracts/auth-password-reset.md:统一 200 防枚举、60 秒/每日 5 次静默抑制、错 5 次作废、重置同 batch 吊销全部会话);routes/auth.test.ts(vitest-plugin + miniflare fetchMock 截获 Resend 读码)覆盖全流程/未注册邮箱响应一致/作废/旧会话 401 -> AC-006
+- [x] T13 [P] worker/migrations/0008_password_reset_tokens.sql : 忘记密码后端——建表(结构见 data-model.md §1)+ routes/auth.ts 增 POST /api/auth/forgot-password 与 /api/auth/reset-password(逻辑按 contracts/auth-password-reset.md:统一 200 防枚举、60 秒/每日 5 次静默抑制、错 5 次作废、重置同 batch 吊销全部会话);routes/auth.test.ts(vitest-plugin + miniflare fetchMock 截获 Resend 读码)覆盖全流程/未注册邮箱响应一致/作废/旧会话 401 -> AC-006
   - 文件集合: worker/migrations/0008_password_reset_tokens.sql, worker/src/routes/auth.ts, worker/src/routes/auth.test.ts
   - 前置: <- T9, T4
   - 判据: `cd worker && npx vitest --run` 全绿;未注册与已注册邮箱的 forgot 响应体字节级一致(测试断言)
-- [ ] T14 [P] worker/src/routes/content.ts : daily 双路径收敛——删除 legacy daily_articles 回退分支;新表空结果显式 console.error 并返回空列表 -> AC-011
+- [x] T14 [P] worker/src/routes/content.ts : daily 双路径收敛——删除 legacy daily_articles 回退分支;新表空结果显式 console.error 并返回空列表 -> AC-011
   - 文件集合: worker/src/routes/content.ts
   - 前置: <- T9
   - 判据: `grep -r daily_articles worker/src` 零匹配(迁移文件除外);worker vitest 全绿;部署顺序约束(迁移先于新代码上线)由 T23 runbook 保证
-- [ ] T15 [P] worker/src/lib/rate-limit.ts : 限流切 Rate Limiting binding——checkRateLimit 重写:有 RATE_LIMITER binding 走 limit({key: ip})(60 秒窗/10 次),无 binding 保留内存兜底;删 KV 分支;types.ts 删 RL 改 RATE_LIMITER(本地最小接口);wrangler.toml 增 [[ratelimit.bindings]] 删注释 KV 段 -> AC-009
+- [x] T15 [P] worker/src/lib/rate-limit.ts : 限流切 Rate Limiting binding——checkRateLimit 重写:有 RATE_LIMITER binding 走 limit({key: ip})(60 秒窗/10 次),无 binding 保留内存兜底;删 KV 分支;types.ts 删 RL 改 RATE_LIMITER(本地最小接口);wrangler.toml 增 [[ratelimit.bindings]] 删注释 KV 段 -> AC-009
   - 文件集合: worker/src/lib/rate-limit.ts, worker/src/lib/rate-limit.test.ts, worker/src/types.ts, worker/wrangler.toml
   - 前置: <- T9
   - 判据: rate-limit.test.ts 断言 binding 成功/拒绝两路径 + 内存兜底 10/min 等价;`grep kv_namespaces worker/wrangler.toml` 零匹配;`grep "\bRL\b" worker/src/types.ts` 零匹配;worker vitest 全绿
-- [ ] T16 [P] src/App.tsx : 路由注册与异常边界——App.tsx 注册 /quiz、/stats、/forgot-password、/reset-password 四路由;main.tsx 挂全局 ErrorBoundary,App.tsx 每路由包路由级边界(react-error-boundary);新建 components/AppErrorFallback.tsx(spec 文案"页面出错了 — 你的数据没有丢…",仅开发模式显示错误信息)+ AppErrorFallback.test.tsx -> AC-007
+- [x] T16 [P] src/App.tsx : 路由注册与异常边界——App.tsx 注册 /quiz、/stats、/forgot-password、/reset-password 四路由;main.tsx 挂全局 ErrorBoundary,App.tsx 每路由包路由级边界(react-error-boundary);新建 components/AppErrorFallback.tsx(spec 文案"页面出错了 — 你的数据没有丢…",仅开发模式显示错误信息)+ AppErrorFallback.test.tsx -> AC-007
   - 文件集合: src/App.tsx, src/main.tsx, src/components/AppErrorFallback.tsx, src/components/AppErrorFallback.test.tsx
   - 前置: <- T10, T11, T12
   - 判据: AppErrorFallback.test.tsx:子组件抛错渲染兜底文案且不含堆栈;`npx vitest --run` 全绿;dev 起服务四路由可达(手动判定项记入验收)
-- [ ] T17 [P] src/pages/HomePage.tsx : 空态/加载态统一 + 首页新卡——HomePage 增"词汇测验""学习看板"两卡(链接 /quiz /stats);HomePage/LibraryPage/HistoryPage/FavoritesPage 空态接 EmptyState(带行动按钮)、加载态接 Skeleton(文案照抄 spec §5);ReadingPage.tsx 删无效 eslint-disable 死注释 -> AC-008, AC-015
+- [x] T17 [P] src/pages/HomePage.tsx : 空态/加载态统一 + 首页新卡——HomePage 增"词汇测验""学习看板"两卡(链接 /quiz /stats);HomePage/LibraryPage/HistoryPage/FavoritesPage 空态接 EmptyState(带行动按钮)、加载态接 Skeleton(文案照抄 spec §5);ReadingPage.tsx 删无效 eslint-disable 死注释 -> AC-008, AC-015
   - 文件集合: src/pages/HomePage.tsx, src/pages/LibraryPage.tsx, src/pages/HistoryPage.tsx, src/pages/FavoritesPage.tsx, src/pages/ReadingPage.tsx
   - 前置: <- T10, T11
   - 判据: `grep -r eslint-disable src/` 零匹配;`grep -r "EmptyState" src/pages` ≥4 处引用;清数据后五页空态文案与 spec §5 逐字一致
-- [ ] T18 [P] src/lib/documentImport.ts : 导入错误路径补验(V4 欠账)——documentImport.test.ts 造四类边界样本(超大文件/损坏 PDF/空白图片/不支持格式)断言各有明确中文提示且不抛未捕获异常;DocumentImportPage.tsx 与 ImportPage.tsx 确保提示落现有 Toast/错误组件;实测记录(实际文案)写 docs/sdd/lexiscene-v5/evidence-import-errors.md -> AC-016
+- [x] T18 [P] src/lib/documentImport.ts : 导入错误路径补验(V4 欠账)——documentImport.test.ts 造四类边界样本(超大文件/损坏 PDF/空白图片/不支持格式)断言各有明确中文提示且不抛未捕获异常;DocumentImportPage.tsx 与 ImportPage.tsx 确保提示落现有 Toast/错误组件;实测记录(实际文案)写 docs/sdd/lexiscene-v5/evidence-import-errors.md -> AC-016
   - 文件集合: src/lib/documentImport.ts, src/lib/documentImport.test.ts, src/pages/DocumentImportPage.tsx, src/pages/ImportPage.tsx
   - 前置: <- T2
   - 判据: documentImport.test.ts 四用例全绿;evidence-import-errors.md 含四条实际提示文案原文

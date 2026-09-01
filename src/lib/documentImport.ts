@@ -65,62 +65,80 @@ async function extractPdf(file: File, onProgress?: ProgressCallback): Promise<Pa
     import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
   ]);
   GlobalWorkerOptions.workerSrc = workerModule.default;
-  const pdfDocument = await getDocument({ data: await file.arrayBuffer() }).promise;
-  if (pdfDocument.numPages > PDF_MAX_PAGES) {
-    await pdfDocument.destroy();
-    throw new Error('PDF 最多支持 50 页');
-  }
-
-  const chunks: string[] = [];
-  let ocrWorker: Awaited<ReturnType<typeof createEnglishOcrWorker>> | null = null;
+  let pdfDocument: import('pdfjs-dist').PDFDocumentProxy | null = null;
   try {
-    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
-      onProgress?.({ stage: 'extracting', current: pageNumber, total: pdfDocument.numPages, message: `正在读取第 ${pageNumber}/${pdfDocument.numPages} 页` });
-      const page = await pdfDocument.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const pageText = content.items.map((item) => 'str' in item ? item.str : '').join('\n').trim();
-      const plausibleCount = pageText.match(/[A-Za-z][A-Za-z'-]{1,39}/g)?.length ?? 0;
-
-      if (plausibleCount >= 3) {
-        chunks.push(pageText);
-      } else {
-        ocrWorker ??= await createEnglishOcrWorker(onProgress);
-        const viewport = page.getViewport({ scale: 2 });
-        const canvas = window.document.createElement('canvas');
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error('浏览器无法创建 OCR 画布');
-        await page.render({ canvasContext: context, viewport }).promise;
-        const result = await ocrWorker.recognize(await canvasBlob(canvas));
-        chunks.push(result.data.text);
-      }
-      page.cleanup();
+    pdfDocument = await getDocument({ data: await file.arrayBuffer() }).promise;
+    if (pdfDocument.numPages > PDF_MAX_PAGES) {
+      throw new Error('PDF 最多支持 50 页');
     }
+
+    const chunks: string[] = [];
+    let ocrWorker: Awaited<ReturnType<typeof createEnglishOcrWorker>> | null = null;
+    try {
+      for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber += 1) {
+        onProgress?.({ stage: 'extracting', current: pageNumber, total: pdfDocument.numPages, message: `正在读取第 ${pageNumber}/${pdfDocument.numPages} 页` });
+        const page = await pdfDocument.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const pageText = content.items.map((item) => 'str' in item ? item.str : '').join('\n').trim();
+        const plausibleCount = pageText.match(/[A-Za-z][A-Za-z'-]{1,39}/g)?.length ?? 0;
+
+        if (plausibleCount >= 3) {
+          chunks.push(pageText);
+        } else {
+          ocrWorker ??= await createEnglishOcrWorker(onProgress);
+          const viewport = page.getViewport({ scale: 2 });
+          const canvas = window.document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('浏览器无法创建 OCR 画布');
+          await page.render({ canvasContext: context, viewport }).promise;
+          const result = await ocrWorker.recognize(await canvasBlob(canvas));
+          chunks.push(result.data.text);
+        }
+        page.cleanup();
+      }
+    } finally {
+      await ocrWorker?.terminate();
+    }
+    return parseExtractedVocabulary(chunks.join('\n'), 'pdf');
+  } catch (error) {
+    // 我方的超限/页数提示原样抛出;其余(pdfjs 解析失败等)统一转成可行动的中文提示
+    if (error instanceof Error && /超过|最多/.test(error.message)) throw error;
+    console.error('PDF import failed', error);
+    throw new Error('文件已损坏或无法读取 — 请确认 PDF 有效后重试');
   } finally {
-    await ocrWorker?.terminate();
-    await pdfDocument.destroy();
+    await pdfDocument?.destroy();
   }
-  return parseExtractedVocabulary(chunks.join('\n'), 'pdf');
 }
 
 async function extractImage(file: File, onProgress?: ProgressCallback): Promise<ParseResult> {
   if (file.size > IMAGE_MAX_BYTES) throw new Error('图片不能超过 10 MB');
-  const worker = await createEnglishOcrWorker(onProgress);
   try {
-    const result = await worker.recognize(file);
-    return parseExtractedVocabulary(result.data.text, 'image');
-  } finally {
-    await worker.terminate();
+    const worker = await createEnglishOcrWorker(onProgress);
+    try {
+      const result = await worker.recognize(file);
+      return parseExtractedVocabulary(result.data.text, 'image');
+    } finally {
+      await worker.terminate();
+    }
+  } catch (error) {
+    console.error('Image import failed', error);
+    throw new Error('图片无法识别 — 请确认图片清晰且包含英文文本后重试');
   }
 }
 
 export async function extractVocabularyFile(file: File, onProgress?: ProgressCallback): Promise<ParseResult> {
   const extension = file.name.toLowerCase().split('.').pop();
-  if (extension === 'xlsx' || extension === 'xls' || extension === 'csv') return parseXLSX(file);
-  if (extension === 'pdf' || file.type === 'application/pdf') return extractPdf(file, onProgress);
-  if (['jpg', 'jpeg', 'png', 'webp'].includes(extension ?? '') || file.type.startsWith('image/')) return extractImage(file, onProgress);
-  throw new Error('仅支持 XLSX、CSV、PDF、JPG、PNG 和 WebP 文件');
+  let result: ParseResult;
+  if (extension === 'xlsx' || extension === 'xls' || extension === 'csv') result = await parseXLSX(file);
+  else if (extension === 'pdf' || file.type === 'application/pdf') result = await extractPdf(file, onProgress);
+  else if (['jpg', 'jpeg', 'png', 'webp'].includes(extension ?? '') || file.type.startsWith('image/')) result = await extractImage(file, onProgress);
+  else throw new Error('仅支持 XLSX、CSV、PDF、JPG、PNG 和 WebP 文件');
+  if (result.words.length === 0) {
+    throw new Error('没有从文件中识别到任何单词 — 请确认文件内容包含英文单词。');
+  }
+  return result;
 }
 
 export function editableWords(values: string[], source: WordSource): Word[] {

@@ -1,6 +1,24 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { z } from 'zod';
+import {
+  AiReviewCoreSchema,
+  AiReviewSchema,
+  ArticlePayloadSchema,
+  ContentReviewSchema,
+  DictionaryBatchSchema,
+  DifficultySchema,
+  GenerateRequestSchema,
+  LoginRequestSchema,
+  PublicArticleRepairSchema,
+  PublicReviewArticleSchema,
+  RegisterRequestSchema,
+  SyncPayloadSchema,
+  VerifyEmailRequestSchema,
+} from './schemas';
+import type { Difficulty, ModelProvider, AiReviewCore } from './schemas';
+import { countVocabHits, englishWordCount, minimumHits } from './lib/wordstats';
+import { chinaDayKey, isRotationDay } from './lib/time';
+import { validateGeneratedArticle, validatePublicArticle } from './lib/validation';
 
 export interface Env {
   DEEPSEEK_GENERATION_API_KEY?: string;
@@ -21,155 +39,6 @@ export interface Env {
   DB?: D1Database;
   FRONTEND_ORIGIN?: string;
 }
-
-type Difficulty = 'CET4' | 'CET6' | '考研' | '雅思' | '托福';
-
-const DifficultySchema = z.enum(['CET4', 'CET6', '考研', '雅思', '托福']);
-const TopicSchema = z.enum(['随机', '科技', '文化', '教育', '生活', '商业', '自然']);
-const QuestionSchema = z.object({
-  question: z.string().min(1),
-  options: z.tuple([z.string(), z.string(), z.string(), z.string()]),
-  answer: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
-  questionZh: z.string().min(1).optional(),
-  optionsZh: z.tuple([z.string(), z.string(), z.string(), z.string()]).optional(),
-  evidence: z.string().min(1).optional(),
-});
-const GeneratedQuestionSchema = QuestionSchema.extend({
-  options: z.tuple([z.string().min(1), z.string().min(1), z.string().min(1), z.string().min(1)]),
-  questionZh: z.string().min(1),
-  optionsZh: z.tuple([z.string().min(1), z.string().min(1), z.string().min(1), z.string().min(1)]),
-  evidence: z.string().min(1),
-});
-const ArticlePayloadSchema = z.object({
-  title: z.string().min(1),
-  article: z.string().min(80),
-  questions: z.array(GeneratedQuestionSchema).min(3).max(5),
-  difficulty: DifficultySchema,
-});
-const ModelProviderSchema = z.enum(['deepseek', 'qwen', 'doubao']);
-const GenerateRequestSchema = z.object({
-  provider: ModelProviderSchema,
-  difficulty: DifficultySchema,
-  sampleWords: z.array(z.string()).min(1).max(50),
-  wordCount: z.number().int().min(100).max(1500).default(300),
-  topic: TopicSchema.default('随机'),
-  questionCount: z.union([z.literal(3), z.literal(5)]).default(5),
-});
-const RegisterRequestSchema = z.object({
-  email: z.string().trim().email().max(254),
-  password: z.string().min(8).max(128),
-  turnstileToken: z.string().min(1).max(2048),
-});
-const LoginRequestSchema = z.object({
-  email: z.string().trim().email().max(254),
-  password: z.string().min(8).max(128),
-});
-const VerifyEmailRequestSchema = z.object({
-  code: z.string().regex(/^\d{6}$/),
-});
-const SyncVocabListSchema = z.object({
-  id: z.string().min(1).max(120),
-  name: z.string().max(200),
-  difficulty: DifficultySchema,
-  wordCount: z.number().int().nonnegative(),
-  masteredCount: z.number().int().nonnegative(),
-  createdAt: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative(),
-  lastUsedAt: z.number().int().nonnegative().optional(),
-  schemaVersion: z.number().int().nonnegative(),
-  deletedAt: z.number().int().nonnegative().optional(),
-});
-const SyncVocabItemSchema = z.object({
-  id: z.string().min(1).max(120),
-  listId: z.string().min(1).max(120),
-  text: z.string().min(1).max(300),
-  normalized: z.string().min(1).max(300),
-  source: z.enum(['pasted', 'xlsx', 'pdf', 'image', 'reading']),
-  mastered: z.boolean(),
-  addedAt: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative(),
-  deletedAt: z.number().int().nonnegative().optional(),
-});
-const SyncArticleSchema = z.object({
-  id: z.string().min(1).max(120),
-  title: z.string().min(1).max(300),
-  article: z.string().min(1).max(100000),
-  questions: z.array(QuestionSchema).max(10),
-  difficulty: DifficultySchema,
-  vocabHitIds: z.array(z.string().max(300)).max(500),
-  createdAt: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative().optional(),
-  summary: z.string().max(2000).optional(),
-  topic: TopicSchema.optional(),
-  wordCount: z.number().int().nonnegative().optional(),
-  estimatedMinutes: z.number().int().nonnegative().optional(),
-  source: z.enum(['generated', 'daily']).optional(),
-  coverUrl: z.string().max(2000).optional(),
-  publishDate: z.string().max(40).optional(),
-  provider: ModelProviderSchema.optional(),
-  model: z.string().max(160).optional(),
-  deletedAt: z.number().int().nonnegative().optional(),
-});
-const SyncProgressSchema = z.object({
-  id: z.string().min(1).max(120),
-  articleId: z.string().min(1).max(120),
-  answers: z.array(z.union([z.number().int().min(0).max(3), z.null()])).max(20),
-  score: z.number().int().nonnegative(),
-  completedAt: z.number().int().nonnegative(),
-  updatedAt: z.number().int().nonnegative(),
-  deletedAt: z.number().int().nonnegative().optional(),
-});
-const SyncPayloadSchema = z.object({
-  vocabLists: z.array(SyncVocabListSchema).max(2000),
-  vocabItems: z.array(SyncVocabItemSchema).max(20000),
-  articles: z.array(SyncArticleSchema).max(2000),
-  progress: z.array(SyncProgressSchema).max(5000),
-});
-const DictionaryBatchSchema = z.object({
-  words: z.array(z.string().trim().min(1).max(80)).min(1).max(500),
-});
-const ContentReviewSchema = z.object({
-  action: z.enum(['approve', 'publish', 'archive', 'candidate']),
-  publishDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-});
-const AiReviewCoreSchema = z.object({
-  verdict: z.enum(['pass', 'needs_revision', 'reject']),
-  score: z.number().int().min(0).max(100),
-  summary: z.string().min(1).max(2000),
-  strengths: z.array(z.string().min(1).max(500)).max(8),
-  issues: z.array(z.string().min(1).max(500)).max(8),
-  factualChecks: z.array(z.string().min(1).max(500)).max(8),
-  scores: z.object({
-    englishQuality: z.number().int().min(0).max(100),
-    levelFit: z.number().int().min(0).max(100),
-    questionQuality: z.number().int().min(0).max(100),
-    factualReliability: z.number().int().min(0).max(100),
-    originality: z.number().int().min(0).max(100),
-  }),
-  questionChecks: z.array(z.object({
-    index: z.number().int().min(1).max(10),
-    answerSupported: z.boolean(),
-    evidenceFound: z.boolean(),
-    issue: z.string().max(500),
-  })).max(10),
-  copyrightRisk: z.object({
-    level: z.enum(['low', 'medium', 'high']),
-    reason: z.string().min(1).max(1000),
-  }),
-});
-const AiReviewSchema = AiReviewCoreSchema.extend({
-  repairCount: z.number().int().min(0).max(2),
-  deterministicIssues: z.array(z.string().min(1).max(500)).max(30),
-});
-const PublicArticleRepairSchema = z.object({
-  title: z.string().min(1).max(300),
-  summary: z.string().min(1).max(2000),
-  content: z.string().min(80).max(100000),
-  questions: z.array(GeneratedQuestionSchema).min(3).max(5),
-});
-const PublicReviewArticleSchema = PublicArticleRepairSchema.extend({
-  questions: z.array(QuestionSchema).min(3).max(5),
-});
 
 const DIFFICULTY_PROMPT: Record<Difficulty, string> = {
   CET4: 'CET-4 practice level: mostly high-frequency college vocabulary, direct argument, concrete context, and short readable sentences.',
@@ -389,8 +258,6 @@ async function callProvider(options: {
   };
 }
 
-type ModelProvider = z.infer<typeof ModelProviderSchema>;
-
 interface BuiltinProvider {
   provider: ModelProvider;
   baseUrl: string;
@@ -432,17 +299,6 @@ function getReviewProvider(env: Env): BuiltinProvider {
     proxyToken: useDevProxy ? env.DEEPSEEK_DEV_PROXY_TOKEN : undefined,
     proxyPurpose: useDevProxy ? 'review' : undefined,
   };
-}
-
-function chinaDayKey(now = Date.now()) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Shanghai',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return values.year + '-' + values.month + '-' + values.day;
 }
 
 async function reserveGeneration(database: D1Database, userId: string, provider: BuiltinProvider) {
@@ -523,102 +379,6 @@ async function verifyTurnstile(env: Env, token: string, ip: string) {
   if (!response.ok) throw new Error('Turnstile 验证服务不可用');
   const result = await response.json() as { success?: boolean };
   return result.success === true;
-}
-
-function countVocabHits(article: string, words: string[]) {
-  const hits = new Set<string>();
-  for (const word of words) {
-    const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    if (new RegExp(`\\b${escaped}\\b`, 'i').test(article)) hits.add(word);
-  }
-  return [...hits];
-}
-
-type GeneratedArticlePayload = z.infer<typeof ArticlePayloadSchema>;
-
-function englishWordCount(value: string) {
-  return value.match(/[A-Za-z]+(?:['-][A-Za-z]+)*/g)?.length ?? 0;
-}
-
-function normalizedText(value: string) {
-  return value.toLowerCase().replace(/[“”‘’]/g, '').replace(/\s+/g, ' ').trim();
-}
-
-function hasCjk(value: string) {
-  return /[\u3400-\u9fff]/u.test(value);
-}
-
-function validateGeneratedArticle(article: GeneratedArticlePayload, input: z.infer<typeof GenerateRequestSchema>, targetHits: number) {
-  const issues: string[] = [];
-  const words = englishWordCount(article.article);
-  const minimumWords = Math.max(80, Math.floor(input.wordCount * 0.8));
-  const maximumWords = Math.ceil(input.wordCount * 1.2);
-  if (words < minimumWords || words > maximumWords) issues.push(`article_word_count:${words}:${minimumWords}-${maximumWords}`);
-  if (article.difficulty !== input.difficulty) issues.push(`difficulty_mismatch:${article.difficulty}:${input.difficulty}`);
-  if (article.questions.length !== input.questionCount) issues.push(`question_count:${article.questions.length}:${input.questionCount}`);
-  if (hasCjk(article.title)) issues.push('title_must_be_english');
-  if (hasCjk(article.article)) issues.push('article_must_be_english');
-  if (input.wordCount >= 250 && article.article.split(/\n\s*\n/).filter(Boolean).length < 2) issues.push('article_needs_multiple_paragraphs');
-
-  const hitCount = countVocabHits(article.article, input.sampleWords).length;
-  if (hitCount < targetHits) issues.push(`target_word_hits:${hitCount}:${targetHits}`);
-  const questionKeys = new Set<string>();
-
-  article.questions.forEach((question, index) => {
-    const prefix = `question_${index + 1}`;
-    if (hasCjk(question.question)) issues.push(`${prefix}_must_be_english`);
-    if (!hasCjk(question.questionZh)) issues.push(`${prefix}_missing_chinese_translation`);
-    if (question.options.some((option) => hasCjk(option))) issues.push(`${prefix}_options_must_be_english`);
-    if (question.optionsZh.some((option) => !hasCjk(option))) issues.push(`${prefix}_option_translations_missing`);
-    if (new Set(question.options.map(normalizedText)).size !== 4) issues.push(`${prefix}_duplicate_options`);
-    const questionKey = normalizedText(question.question);
-    if (questionKeys.has(questionKey)) issues.push(`${prefix}_duplicate_question`);
-    questionKeys.add(questionKey);
-    if (!normalizedText(article.article).includes(normalizedText(question.evidence))) issues.push(`${prefix}_evidence_not_found`);
-  });
-
-  return { issues, wordCount: words, hitCount };
-}
-
-const PUBLIC_DIFFICULTY_LIMITS: Record<Difficulty, { minWords: number; maxWords: number; minSentenceWords: number; maxSentenceWords: number }> = {
-  CET4: { minWords: 400, maxWords: 500, minSentenceWords: 10, maxSentenceWords: 20 },
-  CET6: { minWords: 500, maxWords: 620, minSentenceWords: 13, maxSentenceWords: 25 },
-  考研: { minWords: 600, maxWords: 720, minSentenceWords: 15, maxSentenceWords: 30 },
-  雅思: { minWords: 700, maxWords: 850, minSentenceWords: 14, maxSentenceWords: 30 },
-  托福: { minWords: 750, maxWords: 900, minSentenceWords: 16, maxSentenceWords: 32 },
-};
-
-function validatePublicArticle(article: z.infer<typeof PublicReviewArticleSchema>, difficulty: Difficulty) {
-  const issues: string[] = [];
-  const limits = PUBLIC_DIFFICULTY_LIMITS[difficulty];
-  const words = englishWordCount(article.content);
-  const sentenceCount = Math.max(1, article.content.match(/[.!?]+(?:\s|$)/g)?.length ?? 0);
-  const averageSentenceWords = words / sentenceCount;
-  if (words < limits.minWords || words > limits.maxWords) issues.push(`正文词数为 ${words}，${difficulty} 应为 ${limits.minWords}-${limits.maxWords} 词`);
-  if (averageSentenceWords < limits.minSentenceWords || averageSentenceWords > limits.maxSentenceWords) issues.push(`平均句长为 ${averageSentenceWords.toFixed(1)}，建议范围 ${limits.minSentenceWords}-${limits.maxSentenceWords}`);
-  if (hasCjk(article.title)) issues.push('英文标题中含有中文字符');
-  if (hasCjk(article.content)) issues.push('英文正文中含有中文字符');
-  if (article.content.split(/\n\s*\n/).filter(Boolean).length < 3) issues.push('正文少于三个段落');
-  const questionKeys = new Set<string>();
-  article.questions.forEach((question, index) => {
-    const label = `第 ${index + 1} 题`;
-    if (hasCjk(question.question)) issues.push(`${label}题干不是纯英文`);
-    if (question.options.some((option) => !option.trim() || hasCjk(option))) issues.push(`${label}存在空选项或中文选项`);
-    if (!hasCjk(question.questionZh ?? '') || !question.optionsZh || question.optionsZh.some((option) => !hasCjk(option))) issues.push(`${label}缺少中文翻译`);
-    if (new Set(question.options.map(normalizedText)).size !== 4) issues.push(`${label}存在重复选项`);
-    const key = normalizedText(question.question);
-    if (questionKeys.has(key)) issues.push(`${label}与其他题目重复`);
-    questionKeys.add(key);
-    if (!question.evidence || !normalizedText(article.content).includes(normalizedText(question.evidence))) issues.push(`${label}证据句无法在正文中找到`);
-  });
-  return { issues, wordCount: words, averageSentenceWords };
-}
-
-function minimumHits(wordCount: number) {
-  if (wordCount < 200) return 5;
-  if (wordCount < 400) return 10;
-  if (wordCount < 800) return 15;
-  return 20;
 }
 
 function getClientIp(request: Request) {
@@ -715,15 +475,6 @@ function contentItem(row: Record<string, unknown>, isFavorite = false) {
 }
 
 const ROTATION_DIFFICULTIES: Difficulty[] = ['CET4', 'CET6', '考研', '雅思', '托福'];
-
-function chinaDayNumber(dayKey: string) {
-  const [year, month, day] = dayKey.split('-').map(Number);
-  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
-}
-
-function isRotationDay(dayKey: string) {
-  return chinaDayNumber(dayKey) % 2 === 0;
-}
 
 async function rotateContentPool(database: D1Database, dayKey = chinaDayKey()) {
   if (!isRotationDay(dayKey)) return { rotated: false, count: 0, dayKey };
@@ -1093,7 +844,7 @@ app.post('/api/admin/content/:id/ai-review', async (context) => {
     });
     let repairCount = 0;
     let deterministic = validatePublicArticle(article, difficulty);
-    let reviewCore: z.infer<typeof AiReviewCoreSchema> | null = null;
+    let reviewCore: AiReviewCore | null = null;
 
     while (true) {
       const raw = await callProvider({

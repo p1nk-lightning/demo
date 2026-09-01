@@ -40,19 +40,19 @@
 
 ## 批 3(路由拆分 + 功能竖切,4 线并行)
 
-- [ ] T9 [P] worker/src/routes/auth.ts : Worker 路由拆分(行为不变)——auth/sync/dictionary/content(含 admin+favorites+daily)/generate 五个路由文件 + lib/session.ts(密码哈希/会话/cookie/Turnstile/邮件) + types.ts(Env);index.ts 收敛为挂载入口 ≤300 行;新增 app.onError 统一 JSON 500 + console.error;删除 /api/test-provider 注释块 -> AC-012
+- [x] T9 [P] worker/src/routes/auth.ts : Worker 路由拆分(行为不变)——auth/sync/dictionary/content(含 admin+favorites+daily)/generate 五个路由文件 + lib/session.ts(密码哈希/会话/cookie/Turnstile/邮件) + types.ts(Env);index.ts 收敛为挂载入口 ≤300 行;新增 app.onError 统一 JSON 500 + console.error;删除 /api/test-provider 注释块 -> AC-012
   - 文件集合: worker/src/routes/auth.ts, routes/sync.ts, routes/dictionary.ts, routes/content.ts, routes/generate.ts, worker/src/lib/session.ts, worker/src/types.ts, worker/src/index.ts
   - 前置: <- T5(测试护栏就位后才拆)
   - 判据: index.ts ≤300 行;T5 全部测试拆分前后同绿;`npx wrangler deploy --dry-run` 退出码 0;`grep -r test-provider worker/src` 零匹配
-- [ ] T10 [P] src/lib/quiz.ts : 词汇测验竖切——quiz.ts 纯函数(从激活词库抽 10 词、无释义词跳过计数、干扰项从其他词释义生成且随机分布、判分:大小写/首尾空格容忍但后缀判错、错词入本轮队尾重练)+ quiz.test.ts 全覆盖 + QuizPage.tsx 两模式界面(状态按 spec §5.2 六态:空/加载/成功/失败/无权限/重复提交锁定) -> AC-002, AC-003
+- [x] T10 [P] src/lib/quiz.ts : 词汇测验竖切——quiz.ts 纯函数(从激活词库抽 10 词、无释义词跳过计数、干扰项从其他词释义生成且随机分布、判分:大小写/首尾空格容忍但后缀判错、错词入本轮队尾重练)+ quiz.test.ts 全覆盖 + QuizPage.tsx 两模式界面(状态按 spec §5.2 六态:空/加载/成功/失败/无权限/重复提交锁定) -> AC-002, AC-003
   - 文件集合: src/lib/quiz.ts, src/lib/quiz.test.ts, src/pages/QuizPage.tsx
   - 前置: <- T8
   - 判据: quiz.test.ts 覆盖抽词/干扰项/判分/重练四组(含"patterns 判错展示 pattern"用例);`npx vitest --run` 全绿
-- [ ] T11 [P] src/lib/stats.ts : 学习看板竖切——stats.ts 聚合纯函数(每日阅读量按 Asia/Shanghai 日界;词汇复现率 = 窗口内 vocabHitIds 并集 ∩ 激活词库 ÷ 词库总数;得分趋势阅读+测验双序列)+ stats.test.ts 三天造数断言(含跨日界用例)+ StatsPage.tsx(recharts 三卡 + 近 7/30 天切换 + 空态用 EmptyState) -> AC-005
+- [x] T11 [P] src/lib/stats.ts : 学习看板竖切——stats.ts 聚合纯函数(每日阅读量按 Asia/Shanghai 日界;词汇复现率 = 窗口内 vocabHitIds 并集 ∩ 激活词库 ÷ 词库总数;得分趋势阅读+测验双序列)+ stats.test.ts 三天造数断言(含跨日界用例)+ StatsPage.tsx(recharts 三卡 + 近 7/30 天切换 + 空态用 EmptyState) -> AC-005
   - 文件集合: src/lib/stats.ts, src/lib/stats.test.ts, src/pages/StatsPage.tsx
   - 前置: <- T8, T2
   - 判据: stats.test.ts 断言三指标口径(数值来自造数,非拍摄);`npx vitest --run` 全绿
-- [ ] T12 [P] src/lib/auth.ts : 忘记密码前端——auth.ts 增 requestPasswordReset/resetPassword 两个 API 封装(按 contracts/auth-password-reset.md);ForgotPasswordPage.tsx(邮箱提交、统一文案、60 秒倒计时禁用)+ ResetPasswordPage.tsx(验证码+新密码、错误态、成功跳登录);两页状态按 spec §5.2 六态 -> AC-006
+- [x] T12 [P] src/lib/auth.ts : 忘记密码前端——auth.ts 增 requestPasswordReset/resetPassword 两个 API 封装(按 contracts/auth-password-reset.md);ForgotPasswordPage.tsx(邮箱提交、统一文案、60 秒倒计时禁用)+ ResetPasswordPage.tsx(验证码+新密码、错误态、成功跳登录);两页状态按 spec §5.2 六态 -> AC-006
   - 文件集合: src/lib/auth.ts, src/pages/ForgotPasswordPage.tsx, src/pages/ResetPasswordPage.tsx
   - 前置: <- T2
   - 判据: `npm run typecheck` 退出码 0;倒计时与错误态有组件级断言(RTL)或 T19 E2E 覆盖项在 e2e 清单登记

@@ -1,3 +1,8 @@
+// ⚠️ 免费套餐 D1 限额警告(2026-09-01 实测触发邮件告警):
+// rows_written 按"表行 + 每个索引项"计数。词典表各带 2 个索引 → 每 INSERT 实际写 3 行。
+// 全量灌装 ≈ (21000 词条 + 14514 词形) × 3 ≈ 10.6 万行,单独一次就几乎吃满免费层
+// 每日 100,000 rows_written;断网重跑还会叠加 DELETE + 重灌双倍计入。
+// 除非重建词典,否则永远不要对本脚本用 --remote;日常内容扩池用 generate-content-pool.mjs。
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
